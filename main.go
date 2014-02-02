@@ -82,14 +82,17 @@ func updater(jobs <-chan *Job, group *sync.WaitGroup, s *server.Server) {
 		path, err := s.Router.Get("db").URL("key", key)
 		if err != nil {
 			log.Printf("Error reversing the URL for %s: %s\n", obj.Name, err)
+                        return
 		}
 		if err != nil {
 			log.Printf("Error parsing data: %s\n", err)
+                        return
 		}
 		url := fmt.Sprintf("%s%s", s.ConnectionString(), path.String())
 		resp, err := http.Post(url, "text/plain", buf)
 		if err != nil {
 			log.Printf("Error posting to the API: %s\n", err)
+                        return
 		}
 		// check for non-master redirect
 		switch resp.StatusCode {
@@ -105,6 +108,7 @@ func updater(jobs <-chan *Job, group *sync.WaitGroup, s *server.Server) {
 			resp, err := http.Post(url, "text/plain", buf)
 			if err != nil {
 				log.Printf("Error posting to the API: %s\n", err)
+                                return
 			}
 			defer resp.Body.Close()
 		default:
@@ -249,7 +253,7 @@ func update(d time.Duration, s *server.Server) {
 
 func init() {
 	flag.StringVar(&dockerPath, "docker", "/var/run/docker.sock", "Path to Docker socket")
-	flag.IntVar(&runInterval, "interval", 5, "Run interval")
+	flag.IntVar(&runInterval, "interval", 3, "Run interval")
 	flag.BoolVar(&version, "version", false, "Shows version")
 	flag.BoolVar(&verbose, "v", false, "Enable verbose logging")
 	flag.BoolVar(&trace, "trace", false, "Raft trace debugging")

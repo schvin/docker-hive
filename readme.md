@@ -12,9 +12,10 @@ Host 2:
 
 Now you will be able to use the standard Docker client with any of the nodes in the cluster:
 
-`docker -H tcp://10.1.1.10:4500 ps`
-
-`docker -H tcp://10.1.1.20:4500 ps`
+* `docker -H tcp://10.1.1.10:4500 ps`
+* `docker -H tcp://10.1.1.10:4500 ps -a`
+* `docker -H tcp://10.1.1.10:4500 images`
+* `docker -H tcp://10.1.1.20:4500 ps`
 
 # Status
-Currently only viewing hosts is supported (`docker ps` and `docker ps -a`).  Remaining operations will be added.
+Currently, only viewing containers and images are supported (`docker ps`, `docker ps -a`, and `docker images`).  Remaining operations will be added.

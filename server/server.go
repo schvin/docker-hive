@@ -17,17 +17,27 @@ import (
 	"sync"
 )
 
-type Server struct {
-	name       string
-	host       string
-	port       int
-	path       string
-	httpServer *http.Server
-	db         *db.DB
-	mutex      sync.RWMutex
-	Router     *mux.Router
-	RaftServer raft.Server
-}
+type (
+	Image struct {
+		Id          string
+		Created     int
+		RepoTags    []string
+		Size        int
+		VirtualSize int
+	}
+
+        Server struct {
+	    name       string
+	    host       string
+	    port       int
+	    path       string
+	    httpServer *http.Server
+	    db         *db.DB
+	    mutex      sync.RWMutex
+	    Router     *mux.Router
+	    RaftServer raft.Server
+        }
+)
 
 // Creates a new server.
 func New(path string, host string, port int) *Server {
@@ -237,6 +247,9 @@ func (s *Server) actionHandler(w http.ResponseWriter, req *http.Request) {
 		all := req.FormValue("all")
 		containerActionResponse(s, w, all)
 		return
+        case "images":
+                imageActionResponse(s, w)
+                return
 	}
 	http.Error(w, "404", http.StatusNotFound)
 }
@@ -248,7 +261,7 @@ func containerActionResponse(s *Server, w http.ResponseWriter, all string) {
 		allHosts = append(allHosts, p.Name)
 	}
 	value := "{}"
-	var newContainers []*docker.APIContainers
+	var allContainers []*docker.APIContainers
 	for _, host := range allHosts {
 		key := fmt.Sprintf("containers:%s", host)
 		value = s.db.Get(key)
@@ -262,17 +275,47 @@ func containerActionResponse(s *Server, w http.ResponseWriter, all string) {
 			}
 			for _, v := range containers {
 				if strings.Index(v.Status, "Up") != -1 {
-					newContainers = append(newContainers, v)
+					allContainers = append(allContainers, v)
 				}
 			}
 		}
-		b, err := json.Marshal(newContainers)
+		b, err := json.Marshal(allContainers)
 		if err != nil {
 			log.Printf("Error marshaling containers to JSON: %s", err)
 		}
 		value = string(b)
 	}
 	w.Write([]byte(value))
+}
+
+func imageActionResponse(s *Server, w http.ResponseWriter) {
+	var allHosts []string
+	allHosts = append(allHosts, s.RaftServer.Name())
+	for _, p := range s.RaftServer.Peers() {
+		allHosts = append(allHosts, p.Name)
+	}
+	value := "{}"
+	var allImages []*Image
+	for _, host := range allHosts {
+		key := fmt.Sprintf("images:%s", host)
+		value = s.db.Get(key)
+		var images []*Image
+		s := bytes.NewBufferString(value)
+		d := json.NewDecoder(s)
+		if err := d.Decode(&images); err != nil {
+			log.Printf("Error decoding image JSON: %s", err)
+		}
+                for _, i := range images {
+                    allImages = append(allImages, i)
+                }
+	}
+	b, err := json.Marshal(allImages)
+	if err != nil {
+		log.Printf("Error marshaling images to JSON: %s", err)
+	}
+	//value = string(b)
+	//w.Write([]byte(value))
+        w.Write(b)
 }
 
 func (s *Server) indexHandler(w http.ResponseWriter, req *http.Request) {
