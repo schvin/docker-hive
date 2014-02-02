@@ -1,8 +1,8 @@
 package server
 
 import (
-	"github.com/goraft/raft"
 	"github.com/ehazlett/docker-cluster/db"
+	"github.com/goraft/raft"
 	"log"
 )
 

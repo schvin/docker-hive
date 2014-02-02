@@ -6,8 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"github.com/dotcloud/docker"
-	"github.com/goraft/raft"
 	"github.com/ehazlett/docker-cluster/server"
+	"github.com/goraft/raft"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -36,15 +36,6 @@ var (
 )
 
 type (
-	AgentData struct {
-		Key string `json:"key"`
-	}
-
-	ContainerData struct {
-		Container docker.APIContainers
-		Meta      *docker.Container
-	}
-
 	Job struct {
 		Name string
 		Path string
@@ -82,17 +73,17 @@ func updater(jobs <-chan *Job, group *sync.WaitGroup, s *server.Server) {
 		path, err := s.Router.Get("db").URL("key", key)
 		if err != nil {
 			log.Printf("Error reversing the URL for %s: %s\n", obj.Name, err)
-                        return
+			return
 		}
 		if err != nil {
 			log.Printf("Error parsing data: %s\n", err)
-                        return
+			return
 		}
 		url := fmt.Sprintf("%s%s", s.ConnectionString(), path.String())
 		resp, err := http.Post(url, "text/plain", buf)
 		if err != nil {
 			log.Printf("Error posting to the API: %s\n", err)
-                        return
+			return
 		}
 		// check for non-master redirect
 		switch resp.StatusCode {
@@ -108,7 +99,7 @@ func updater(jobs <-chan *Job, group *sync.WaitGroup, s *server.Server) {
 			resp, err := http.Post(url, "text/plain", buf)
 			if err != nil {
 				log.Printf("Error posting to the API: %s\n", err)
-                                return
+				return
 			}
 			defer resp.Body.Close()
 		default:

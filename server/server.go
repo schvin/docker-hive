@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/dotcloud/docker"
+	"github.com/ehazlett/docker-cluster/db"
 	"github.com/goraft/raft"
 	"github.com/gorilla/mux"
-	"github.com/ehazlett/docker-cluster/db"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -26,17 +26,17 @@ type (
 		VirtualSize int
 	}
 
-        Server struct {
-	    name       string
-	    host       string
-	    port       int
-	    path       string
-	    httpServer *http.Server
-	    db         *db.DB
-	    mutex      sync.RWMutex
-	    Router     *mux.Router
-	    RaftServer raft.Server
-        }
+	Server struct {
+		name       string
+		host       string
+		port       int
+		path       string
+		httpServer *http.Server
+		db         *db.DB
+		mutex      sync.RWMutex
+		Router     *mux.Router
+		RaftServer raft.Server
+	}
 )
 
 // Creates a new server.
@@ -247,9 +247,9 @@ func (s *Server) actionHandler(w http.ResponseWriter, req *http.Request) {
 		all := req.FormValue("all")
 		containerActionResponse(s, w, all)
 		return
-        case "images":
-                imageActionResponse(s, w)
-                return
+	case "images":
+		imageActionResponse(s, w)
+		return
 	}
 	http.Error(w, "404", http.StatusNotFound)
 }
@@ -305,9 +305,9 @@ func imageActionResponse(s *Server, w http.ResponseWriter) {
 		if err := d.Decode(&images); err != nil {
 			log.Printf("Error decoding image JSON: %s", err)
 		}
-                for _, i := range images {
-                    allImages = append(allImages, i)
-                }
+		for _, i := range images {
+			allImages = append(allImages, i)
+		}
 	}
 	b, err := json.Marshal(allImages)
 	if err != nil {
@@ -315,7 +315,7 @@ func imageActionResponse(s *Server, w http.ResponseWriter) {
 	}
 	//value = string(b)
 	//w.Write([]byte(value))
-        w.Write(b)
+	w.Write(b)
 }
 
 func (s *Server) indexHandler(w http.ResponseWriter, req *http.Request) {
