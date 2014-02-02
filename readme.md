@@ -16,4 +16,5 @@ Now you will be able to use the standard Docker client with any of the nodes in 
 
 `docker -H tcp://10.1.1.20:4500 ps`
 
-
+# Status
+Currently only viewing hosts is supported (`docker ps` and `docker ps -a`).  Support for all operations will continuously added.
