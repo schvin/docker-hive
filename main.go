@@ -14,14 +14,14 @@ import (
 const VERSION string = "0.0.1"
 
 var (
-	dockerPath    string
-	version       bool
-	port          int
-	verbose       bool
-	trace         bool
-	debug         bool
-	host          string
-	join          string
+	dockerPath string
+	version    bool
+	port       int
+	verbose    bool
+	trace      bool
+	debug      bool
+	host       string
+	join       string
 )
 
 func init() {
@@ -76,7 +76,7 @@ func main() {
 	}
 
 	log.SetFlags(log.LstdFlags)
-	log.Printf("Docker Cluster %s)\n", VERSION)
+	log.Printf("Docker Cluster %s\n", VERSION)
 	s := server.New(path, host, port, dockerPath)
 
 	log.Fatal(s.ListenAndServe(join))

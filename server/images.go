@@ -37,4 +37,3 @@ func imageActionResponse(s *Server, w http.ResponseWriter) {
 	//w.Write([]byte(value))
 	w.Write(b)
 }
-

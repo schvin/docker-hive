@@ -7,7 +7,7 @@ import (
 	"github.com/dotcloud/docker"
 	"log"
 	"net/http"
-        "strings"
+	"strings"
 )
 
 func containerActionResponse(s *Server, w http.ResponseWriter, all string) {

@@ -1,16 +1,16 @@
 package server
 
 import (
+	"fmt"
 	"github.com/ehazlett/docker-cluster/db"
 	"github.com/goraft/raft"
 	"log"
-        "fmt"
-        "net/http"
-        "sync"
+	"net/http"
+	"sync"
 )
 
 type UpdateJob struct {
-    Path    string
+	Path string
 }
 
 // -- write command
@@ -66,13 +66,13 @@ func (c *ActionCommand) Apply(server raft.Server) (interface{}, error) {
 
 // -- new sync command
 type SyncCommand struct {
-	Nodes   []string `json:"nodes"`
+	Nodes []string `json:"nodes"`
 }
 
 // new sync command
 func NewSyncCommand(nodes []string) *SyncCommand {
 	return &SyncCommand{
-		Nodes:   nodes,
+		Nodes: nodes,
 	}
 }
 
@@ -81,22 +81,22 @@ func (c *SyncCommand) CommandName() string {
 	return "sync"
 }
 func update(jobs <-chan *UpdateJob, group *sync.WaitGroup) {
-        group.Add(1)
-        defer group.Done()
-        for j := range jobs {
-            http.Get(j.Path)
-        }
+	group.Add(1)
+	defer group.Done()
+	for j := range jobs {
+		http.Get(j.Path)
+	}
 }
 
 func (c *SyncCommand) Apply(server raft.Server) (interface{}, error) {
-        syncGroup := &sync.WaitGroup{}
-        var jobs = make(chan *UpdateJob, len(c.Nodes))
-        go update(jobs, syncGroup)
-        for _, v := range c.Nodes {
-            jobs <- &UpdateJob{
-                Path: fmt.Sprintf("%s/update", v),
-            }
-        }
-        syncGroup.Wait()
+	syncGroup := &sync.WaitGroup{}
+	var jobs = make(chan *UpdateJob, len(c.Nodes))
+	go update(jobs, syncGroup)
+	for _, v := range c.Nodes {
+		jobs <- &UpdateJob{
+			Path: fmt.Sprintf("%s/update", v),
+		}
+	}
+	syncGroup.Wait()
 	return nil, nil
 }
