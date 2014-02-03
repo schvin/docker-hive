@@ -4,7 +4,14 @@ import (
 	"github.com/ehazlett/docker-cluster/db"
 	"github.com/goraft/raft"
 	"log"
+        "fmt"
+        "net/http"
+        "sync"
 )
+
+type UpdateJob struct {
+    Path    string
+}
 
 // -- write command
 type WriteCommand struct {
@@ -12,7 +19,7 @@ type WriteCommand struct {
 	Value string `json:"value"`
 }
 
-// Creates a new write command.
+// new write command
 func NewWriteCommand(key string, value string) *WriteCommand {
 	return &WriteCommand{
 		Key:   key,
@@ -20,12 +27,12 @@ func NewWriteCommand(key string, value string) *WriteCommand {
 	}
 }
 
-// The name of the command in the log.
+// name for log
 func (c *WriteCommand) CommandName() string {
 	return "write"
 }
 
-// Writes a value to a key.
+// writes a value to a key
 func (c *WriteCommand) Apply(server raft.Server) (interface{}, error) {
 	db := server.Context().(*db.DB)
 	db.Put(c.Key, c.Value)
@@ -38,7 +45,7 @@ type ActionCommand struct {
 	Action string `json:"action"`
 }
 
-// Creates a new write command.
+// new action command
 func NewActionCommand(node string, action string) *ActionCommand {
 	return &ActionCommand{
 		Node:   node,
@@ -46,6 +53,7 @@ func NewActionCommand(node string, action string) *ActionCommand {
 	}
 }
 
+// name for log
 func (c *ActionCommand) CommandName() string {
 	return "action"
 }
@@ -53,5 +61,42 @@ func (c *ActionCommand) CommandName() string {
 // do action
 func (c *ActionCommand) Apply(server raft.Server) (interface{}, error) {
 	log.Printf("action for %s: %s\n", c.Node, c.Action)
+	return nil, nil
+}
+
+// -- new sync command
+type SyncCommand struct {
+	Nodes   []string `json:"nodes"`
+}
+
+// new sync command
+func NewSyncCommand(nodes []string) *SyncCommand {
+	return &SyncCommand{
+		Nodes:   nodes,
+	}
+}
+
+// name for log
+func (c *SyncCommand) CommandName() string {
+	return "sync"
+}
+func update(jobs <-chan *UpdateJob, group *sync.WaitGroup) {
+        group.Add(1)
+        defer group.Done()
+        for j := range jobs {
+            http.Get(j.Path)
+        }
+}
+
+func (c *SyncCommand) Apply(server raft.Server) (interface{}, error) {
+        syncGroup := &sync.WaitGroup{}
+        var jobs = make(chan *UpdateJob, len(c.Nodes))
+        go update(jobs, syncGroup)
+        for _, v := range c.Nodes {
+            jobs <- &UpdateJob{
+                Path: fmt.Sprintf("%s/update", v),
+            }
+        }
+        syncGroup.Wait()
 	return nil, nil
 }

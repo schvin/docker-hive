@@ -4,19 +4,30 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/dotcloud/docker"
 	"github.com/ehazlett/docker-cluster/db"
 	"github.com/goraft/raft"
 	"github.com/gorilla/mux"
 	"io/ioutil"
 	"log"
 	"math/rand"
+        "net"
 	"net/http"
+	"net/http/httputil"
 	"path/filepath"
 	"strings"
 	"sync"
+	"strconv"
+        "time"
 )
 
 type (
+	Job struct {
+		Name string
+		Path string
+		Data interface{}
+	}
+
 	Image struct {
 		Id          string
 		Created     int
@@ -35,17 +46,19 @@ type (
 		mutex      sync.RWMutex
 		Router     *mux.Router
 		RaftServer raft.Server
+                DockerPath  string
 	}
 )
 
 // Creates a new server.
-func New(path string, host string, port int) *Server {
+func New(path string, host string, port int, dockerPath string) *Server {
 	s := &Server{
 		host:   host,
 		port:   port,
 		path:   path,
 		db:     db.New(),
 		Router: mux.NewRouter(),
+                DockerPath: dockerPath,
 	}
 
 	// Read existing name or generate a new one.
@@ -60,6 +73,205 @@ func New(path string, host string, port int) *Server {
 	return s
 }
 
+func newClient(path string) (*httputil.ClientConn, error) {
+	conn, err := net.Dial("unix", path)
+	if err != nil {
+		return nil, err
+	}
+	return httputil.NewClientConn(conn, nil), nil
+}
+
+func (s *Server) syncDocker(interval int) {
+    var (
+        updaterGroup = &sync.WaitGroup{}
+        pushGroup = &sync.WaitGroup{}
+        // create chan with a 2 buffer, we use a 2 buffer to sync the go routines so that
+        // no more than two messages are being send to the server at one time
+        jobs = make(chan *Job, 2)
+    )
+    duration, err := time.ParseDuration(fmt.Sprintf("%ds", interval))
+    if err != nil {
+        log.Fatalf("Unable to parse sync interval: %s", err)
+    }
+    
+    go s.updater(jobs, updaterGroup)
+    
+    for _ = range time.Tick(duration) {
+        go s.pushContainers(jobs, pushGroup)
+        go s.pushImages(jobs, pushGroup)
+        pushGroup.Wait()
+    }
+    // wait for all request to finish processing before returning
+    updaterGroup.Wait()
+}
+
+func (s *Server) updater(jobs <-chan *Job, group *sync.WaitGroup) {
+	group.Add(1)
+	defer group.Done()
+	for obj := range jobs {
+		buf := bytes.NewBuffer(nil)
+		if err := json.NewEncoder(buf).Encode(obj.Data); err != nil {
+			log.Println(err)
+			continue
+		}
+		key := fmt.Sprintf("%s:%s", obj.Name, s.RaftServer.Name())
+		path, err := s.Router.Get("db").URL("key", key)
+		if err != nil {
+			log.Printf("Error reversing the URL for %s: %s\n", obj.Name, err)
+			return
+		}
+		if err != nil {
+			log.Printf("Error parsing data: %s\n", err)
+			return
+		}
+		url := fmt.Sprintf("%s%s", s.ConnectionString(), path.String())
+		resp, err := http.Post(url, "text/plain", buf)
+		if err != nil {
+			log.Printf("Error posting to the API: %s\n", err)
+			return
+		}
+		// check for non-master redirect
+		switch resp.StatusCode {
+                case http.StatusOK, http.StatusCreated:
+			// ignore success
+		case http.StatusFound:
+                        log.Printf("Redirect StatusFound")
+			// re-post to leader
+			url = resp.Header.Get("Location")
+			if err := json.NewEncoder(buf).Encode(obj.Data); err != nil {
+				log.Printf("Error encoding container JSON: %s", err)
+				return
+			}
+			res, err := http.Post(url, "text/plain", buf)
+			if err != nil {
+				log.Printf("Error posting to the API: %s\n", err)
+				return
+			}
+			defer res.Body.Close()
+		default:
+			contents, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				log.Printf("Unable to parse API response: %s\n", err)
+			}
+			defer resp.Body.Close()
+			log.Printf("Error creating via API: HTTP %s: %s\n", strconv.Itoa(resp.StatusCode), string(contents))
+		}
+		defer resp.Body.Close()
+	}
+}
+
+func (s *Server) getContainers() []*docker.APIContainers {
+	path := fmt.Sprintf("/containers/json?all=1")
+	c, err := newClient(s.DockerPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer c.Close()
+	req, err := http.NewRequest("GET", path, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	resp, err := c.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	var containers []*docker.APIContainers
+	if resp.StatusCode == http.StatusOK {
+		d := json.NewDecoder(resp.Body)
+		if err = d.Decode(&containers); err != nil {
+			log.Fatal(err)
+		}
+	}
+	return containers
+}
+
+func (s *Server) inspectContainer(id string) *docker.Container {
+	path := fmt.Sprintf("/containers/%s/json?all=1", id)
+	c, err := newClient(s.DockerPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer c.Close()
+	req, err := http.NewRequest("GET", path, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	resp, err := c.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	var container *docker.Container
+	if resp.StatusCode == http.StatusOK {
+		d := json.NewDecoder(resp.Body)
+		if err = d.Decode(&container); err != nil {
+			log.Fatal(err)
+		}
+	}
+	return container
+}
+
+func (s *Server) getImages() []*Image {
+	path := "/images/json?all=0"
+	c, err := newClient(s.DockerPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer c.Close()
+	req, err := http.NewRequest("GET", path, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	resp, err := c.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	var images []*Image
+	if resp.StatusCode == http.StatusOK {
+		d := json.NewDecoder(resp.Body)
+		if err = d.Decode(&images); err != nil {
+			log.Fatal(err)
+		}
+	}
+	return images
+}
+
+func (s *Server) pushContainers(jobs chan *Job, group *sync.WaitGroup) {
+	group.Add(1)
+	defer group.Done()
+	containers := s.getContainers()
+
+	jobs <- &Job{
+		Path: "/agent/containers/",
+		Data: containers,
+		Name: "containers",
+	}
+}
+
+func (s *Server) pushImages(jobs chan *Job, group *sync.WaitGroup) {
+	group.Add(1)
+	defer group.Done()
+	images := s.getImages()
+	jobs <- &Job{
+		Path: "/agent/images/",
+		Data: images,
+		Name: "images",
+	}
+}
+
+func (s *Server) Update() {
+    
+}
+
+
 // Leader returns the current leader.
 func (s *Server) Leader() string {
 	l := s.RaftServer.Leader()
@@ -71,6 +283,11 @@ func (s *Server) Leader() string {
 }
 
 func (s *Server) GetConnectionString(node string) string {
+        // master
+        if node == s.RaftServer.Name() {
+            return s.RaftServer.Leader()
+        }
+        // check peers
 	for _, p := range s.RaftServer.Peers() {
 		if p.Name == node {
 			return p.ConnectionString
@@ -94,11 +311,24 @@ func (s *Server) Members() (members []string) {
 	return
 }
 
+// returns all nodes in the cluster
+func (s *Server) AllNodes() []string {
+	var allHosts []string
+	allHosts = append(allHosts, s.RaftServer.Name())
+	for _, p := range s.RaftServer.Peers() {
+		allHosts = append(allHosts, p.Name)
+	}
+        return allHosts
+}
+
 // redirects requests to the cluster leader
 func (s *Server) redirectToLeader(w http.ResponseWriter, req *http.Request) {
+        log.Printf("Redirecting %s", req.URL.Path)
 	if s.Leader() != "" {
 		leader := s.GetConnectionString(s.Leader())
-		http.Redirect(w, req, leader+req.URL.Path, http.StatusMovedPermanently)
+                newPath := fmt.Sprintf("%s%s", leader, req.URL.Path)
+                log.Println(newPath)
+		http.Redirect(w, req, newPath, http.StatusFound)
 	} else {
 		log.Println("Error: Leader Unknown")
 		http.Error(w, "Leader unknown", http.StatusInternalServerError)
@@ -165,11 +395,16 @@ func (s *Server) ListenAndServe(leader string) error {
 	s.Router.HandleFunc("/db/{key}", s.readHandler).Methods("GET").Name("db")
 	s.Router.HandleFunc("/db/{key}", s.writeHandler).Methods("POST")
 	s.Router.HandleFunc("/join", s.joinHandler).Methods("POST")
+	s.Router.HandleFunc("/sync", s.syncHandler).Methods("GET").Name("sync")
+	s.Router.HandleFunc("/update", s.updateHandler).Methods("GET").Name("update")
 	s.Router.HandleFunc("/{apiVersion:.*}/{action:.*}/{format:.*}", s.actionHandler).Methods("GET", "POST")
 	s.Router.HandleFunc("/", s.indexHandler).Methods("GET")
 
 	log.Printf("Server name: %s\n", s.RaftServer.Name())
 	log.Println("Listening at:", s.ConnectionString())
+
+        // start sync
+        go s.syncDocker(1)
 
 	return s.httpServer.ListenAndServe()
 }
@@ -177,6 +412,11 @@ func (s *Server) ListenAndServe(leader string) error {
 // Gorilla mux not providing the correct net/http HandleFunc() interface.
 func (s *Server) HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) {
 	s.Router.HandleFunc(pattern, handler)
+}
+
+// Index handler
+func (s *Server) indexHandler(w http.ResponseWriter, req *http.Request) {
+	w.Write([]byte("Docker Cluster"))
 }
 
 // Joins to the leader of an existing cluster.
@@ -209,12 +449,48 @@ func (s *Server) joinHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func (s *Server) Sync() error {
+        n := s.AllNodes()
+        var nodes []string
+        for _, v := range n {
+            nodes = append(nodes, s.GetConnectionString(v))
+        }
+        command := NewSyncCommand(nodes)
+	if _, err := s.RaftServer.Do(command); err != nil {
+            return err
+        }
+        return nil
+}
+
+func (s *Server) syncHandler(w http.ResponseWriter, req *http.Request) {
+        if err := s.Sync(); err != nil {
+		switch err {
+		case raft.NotLeaderError:
+			s.redirectToLeader(w, req)
+		default:
+			log.Println("Error: ", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+        }
+	w.WriteHeader(http.StatusNoContent)
+}
+
+
+// updates the local node
+func (s *Server) updateHandler(w http.ResponseWriter, req *http.Request) {
+    s.Update()
+    w.WriteHeader(http.StatusNoContent)
+}
+
+// handles reads from the db
 func (s *Server) readHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	value := s.db.Get(vars["key"])
 	w.Write([]byte(value))
 }
 
+// handles writes to the db
 func (s *Server) writeHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 
@@ -229,7 +505,16 @@ func (s *Server) writeHandler(w http.ResponseWriter, req *http.Request) {
 	if _, err := s.RaftServer.Do(NewWriteCommand(vars["key"], value)); err != nil {
 		switch err {
 		case raft.NotLeaderError:
-			s.redirectToLeader(w, req)
+		        // re-post to leader
+                        host := s.GetConnectionString(s.Leader())
+                        url := fmt.Sprintf("%s%s", host, req.URL.Path)
+                        buf := bytes.NewBufferString(value)
+		        res, err := http.Post(url, "text/plain", buf)
+		        if err != nil {
+		        	log.Printf("Error posting to the API: %s\n", err)
+		        	return
+		        }
+		        res.Body.Close()
 		default:
 			log.Println("Error: ", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -243,17 +528,15 @@ func (s *Server) actionHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	switch vars["action"] {
 	case "containers":
+                s.Sync()
 		all := req.FormValue("all")
 		containerActionResponse(s, w, all)
 		return
 	case "images":
+                s.Sync()
 		imageActionResponse(s, w)
 		return
 	}
 	http.Error(w, "404", http.StatusNotFound)
 }
 
-
-func (s *Server) indexHandler(w http.ResponseWriter, req *http.Request) {
-	w.Write([]byte("Docker Cluster"))
-}
