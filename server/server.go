@@ -441,10 +441,14 @@ func (s *Server) ListenAndServe(leader string) error {
 	s.Router.HandleFunc("/docker/{path:.*}", s.dockerHandler).Methods("GET", "POST").Name("docker")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/json", s.containersHandler).Methods("GET", "POST")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/json", s.containerInspectHandler).Methods("GET")
+	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}", s.containerRemoveHandler).Methods("DELETE")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/json", s.imagesHandler).Methods("GET", "POST")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/restart", s.containerRestartHandler).Methods("GET", "POST")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/start", s.containerStartHandler).Methods("POST")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/stop", s.containerStopHandler).Methods("POST")
+	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/top", s.containerTopHandler).Methods("GET")
+	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/changes", s.containerChangesHandler).Methods("GET")
+	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/kill", s.containerKillHandler).Methods("POST")
 	s.Router.HandleFunc("/", s.indexHandler).Methods("GET")
 
 	log.Printf("Server name: %s\n", s.RaftServer.Name())
@@ -590,9 +594,7 @@ func (s *Server) proxyDockerRequest(w http.ResponseWriter, req *http.Request) {
 		log.Fatalf("Unable to find Docker host for %s", containerId)
 	}
 	parts := strings.Split(hostInfo, "::")
-	//serverName := parts[0]
 	host := parts[1]
-	//value := string(b)
 	params := req.Form
 	path := fmt.Sprintf("%s/docker%s?%s", host, req.URL.Path, params.Encode())
 	client := &http.Client{}
@@ -622,6 +624,23 @@ func (s *Server) containerStartHandler(w http.ResponseWriter, req *http.Request)
 }
 
 func (s *Server) containerStopHandler(w http.ResponseWriter, req *http.Request) {
+	s.proxyDockerRequest(w, req)
+}
+
+func (s *Server) containerRemoveHandler(w http.ResponseWriter, req *http.Request) {
+	// TODO: check if running and error if is
+	s.proxyDockerRequest(w, req)
+}
+
+func (s *Server) containerTopHandler(w http.ResponseWriter, req *http.Request) {
+	s.proxyDockerRequest(w, req)
+}
+
+func (s *Server) containerChangesHandler(w http.ResponseWriter, req *http.Request) {
+	s.proxyDockerRequest(w, req)
+}
+
+func (s *Server) containerKillHandler(w http.ResponseWriter, req *http.Request) {
 	s.proxyDockerRequest(w, req)
 }
 
