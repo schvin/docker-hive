@@ -1,6 +1,7 @@
 package db
 
 import (
+	"strings"
 	"sync"
 )
 
@@ -22,6 +23,18 @@ func (db *DB) Get(key string) string {
 	db.mutex.RLock()
 	defer db.mutex.RUnlock()
 	return db.data[key]
+}
+
+func (db *DB) Find(key string) string {
+	db.mutex.RLock()
+	defer db.mutex.RUnlock()
+	// TODO: probably need a better algorithm here
+	for k, v := range db.data {
+		if strings.Index(k, key) != -1 {
+			return v
+		}
+	}
+	return ""
 }
 
 // Sets the value for a given key.

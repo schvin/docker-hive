@@ -64,6 +64,7 @@ func main() {
 	raft.RegisterCommand(&server.WriteCommand{})
 	raft.RegisterCommand(&server.ActionCommand{})
 	raft.RegisterCommand(&server.SyncCommand{})
+	raft.RegisterCommand(&server.ContainerRestartCommand{})
 
 	// Set the data directory.
 	if flag.NArg() == 0 {
@@ -77,7 +78,7 @@ func main() {
 
 	log.SetFlags(log.LstdFlags)
 	log.Printf("Docker Cluster %s\n", VERSION)
-	s := server.New(path, host, port, dockerPath)
+	s := server.New(path, host, port, dockerPath, join)
 
 	log.Fatal(s.ListenAndServe(join))
 }

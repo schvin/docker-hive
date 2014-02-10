@@ -6,6 +6,7 @@ import (
 	"github.com/goraft/raft"
 	"log"
 	"net/http"
+	"net/url"
 	"sync"
 )
 
@@ -64,12 +65,12 @@ func (c *ActionCommand) Apply(server raft.Server) (interface{}, error) {
 	return nil, nil
 }
 
-// -- new sync command
+// -- sync command
 type SyncCommand struct {
 	Nodes []string `json:"nodes"`
 }
 
-// new sync command
+// sync command
 func NewSyncCommand(nodes []string) *SyncCommand {
 	return &SyncCommand{
 		Nodes: nodes,
@@ -98,5 +99,45 @@ func (c *SyncCommand) Apply(server raft.Server) (interface{}, error) {
 		}
 	}
 	syncGroup.Wait()
+	return nil, nil
+}
+
+// -- restart container command
+type ContainerRestartCommand struct {
+	ContainerId string     `json:"container_id"`
+	ApiVersion  string     `json:"api_version"`
+	Path        string     `json:"path"`
+	Params      url.Values `json:"params"`
+        Server      *Server
+}
+
+// container restart command
+func NewContainerRestartCommand(containerId string, apiVersion string, path string, params url.Values, server *Server) *ContainerRestartCommand {
+	return &ContainerRestartCommand{
+		ContainerId: containerId,
+		ApiVersion:  apiVersion,
+		Path:        path,
+		Params:      params,
+                Server:     server,
+	}
+}
+
+// name for log
+func (c *ContainerRestartCommand) CommandName() string {
+	return "containerRestart"
+}
+
+func (c *ContainerRestartCommand) Apply(server raft.Server) (interface{}, error) {
+	db := server.Context().(*db.DB)
+	// look for container
+	key := fmt.Sprintf("container:host:%s", c.ContainerId)
+	host := db.Find(key)
+        if host == server.Name() {
+	    log.Printf("Restarting container %s", c.ContainerId)
+            h := fmt.Sprintf("http://%s:%d", c.Server.Host, c.Server.Port)
+            path := fmt.Sprintf("%s/docker%s?%s", h, c.Path, c.Params.Encode())
+            // TODO: finish container restart
+            log.Printf("ContainerRestartCommand.Apply %s", path)
+        }
 	return nil, nil
 }

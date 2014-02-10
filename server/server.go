@@ -23,9 +23,9 @@ import (
 
 type (
 	Job struct {
-		Name string
-		Path string
-		Data interface{}
+		Name   string
+		Data   interface{}
+		Encode bool
 	}
 
 	Image struct {
@@ -36,10 +36,27 @@ type (
 		VirtualSize int
 	}
 
+        Port struct {
+            IP  string
+            PrivatePort int
+            PublicPort  int
+            Type    string
+        }
+
+        APIContainer struct {
+            Id  string
+            Created int
+            Image   string
+            Status  string
+            Command string
+            Ports   []Port
+            Names   []string
+        }
+
 	Server struct {
 		name       string
-		host       string
-		port       int
+		Host       string
+		Port       int
 		path       string
 		httpServer *http.Server
 		db         *db.DB
@@ -47,18 +64,20 @@ type (
 		Router     *mux.Router
 		RaftServer raft.Server
 		DockerPath string
+		LeaderURL  string
 	}
 )
 
 // Creates a new server.
-func New(path string, host string, port int, dockerPath string) *Server {
+func New(path string, host string, port int, dockerPath string, leader string) *Server {
 	s := &Server{
-		host:       host,
-		port:       port,
+		Host:       host,
+		Port:       port,
 		path:       path,
 		db:         db.New(),
 		Router:     mux.NewRouter(),
 		DockerPath: dockerPath,
+		LeaderURL:  leader,
 	}
 
 	// Read existing name or generate a new one.
@@ -110,11 +129,15 @@ func (s *Server) updater(jobs <-chan *Job, group *sync.WaitGroup) {
 	defer group.Done()
 	for obj := range jobs {
 		buf := bytes.NewBuffer(nil)
-		if err := json.NewEncoder(buf).Encode(obj.Data); err != nil {
-			log.Println(err)
-			continue
+		if obj.Encode {
+			if err := json.NewEncoder(buf).Encode(obj.Data); err != nil {
+                                log.Printf("Error encoding to JSON: %s", err)
+				continue
+			}
+		} else {
+			buf = bytes.NewBufferString(obj.Data.(string))
 		}
-		key := fmt.Sprintf("%s:%s", obj.Name, s.RaftServer.Name())
+		key := obj.Name
 		path, err := s.Router.Get("db").URL("key", key)
 		if err != nil {
 			log.Printf("Error reversing the URL for %s: %s\n", obj.Name, err)
@@ -124,7 +147,8 @@ func (s *Server) updater(jobs <-chan *Job, group *sync.WaitGroup) {
 			log.Printf("Error parsing data: %s\n", err)
 			return
 		}
-		url := fmt.Sprintf("%s%s", s.ConnectionString(), path.String())
+                host := s.GetConnectionString(s.Leader())
+		url := fmt.Sprintf("%s%s", host, path.String())
 		resp, err := http.Post(url, "text/plain", buf)
 		if err != nil {
 			log.Printf("Error posting to the API: %s\n", err)
@@ -160,30 +184,33 @@ func (s *Server) updater(jobs <-chan *Job, group *sync.WaitGroup) {
 	}
 }
 
-func (s *Server) getContainers() []*docker.APIContainers {
+func (s *Server) getContainers() []APIContainer {
 	path := fmt.Sprintf("/containers/json?all=1")
 	c, err := newClient(s.DockerPath)
-	if err != nil {
-		log.Fatal(err)
-	}
 	defer c.Close()
+	if err != nil {
+            log.Fatalf("Error connecting to Docker: %s", err)
+	}
 	req, err := http.NewRequest("GET", path, nil)
 	if err != nil {
-		log.Fatal(err)
+            log.Fatalf("Error requesting containers from Docker: %s", err)
 	}
 
 	resp, err := c.Do(req)
 	if err != nil {
-		log.Fatal(err)
+            log.Fatalf("Error requesting containers from Docker: %s", err)
 	}
 	defer resp.Body.Close()
 
-	var containers []*docker.APIContainers
+        var containers []APIContainer
 	if resp.StatusCode == http.StatusOK {
-		d := json.NewDecoder(resp.Body)
+                contents, _ := ioutil.ReadAll(resp.Body)
+                r := bytes.NewReader(contents)
+		d := json.NewDecoder(r)
 		if err = d.Decode(&containers); err != nil {
-			log.Fatal(err)
+                        log.Fatalf("Erroring decoding container JSON: %s", err)
 		}
+                resp.Body.Close()
 	}
 	return containers
 }
@@ -191,28 +218,27 @@ func (s *Server) getContainers() []*docker.APIContainers {
 func (s *Server) inspectContainer(id string) *docker.Container {
 	path := fmt.Sprintf("/containers/%s/json?all=1", id)
 	c, err := newClient(s.DockerPath)
-	if err != nil {
-		log.Fatal(err)
-	}
 	defer c.Close()
+	if err != nil {
+            log.Fatalf("Error connecting to Docker: %s", err)
+	}
 	req, err := http.NewRequest("GET", path, nil)
 	if err != nil {
-		log.Fatal(err)
+            log.Fatalf("Error inspecting container from Docker: %s", err)
 	}
-
 	resp, err := c.Do(req)
 	if err != nil {
-		log.Fatal(err)
+            log.Fatalf("Error inspecting container from Docker: %s", err)
 	}
-	defer resp.Body.Close()
 
 	var container *docker.Container
 	if resp.StatusCode == http.StatusOK {
 		d := json.NewDecoder(resp.Body)
 		if err = d.Decode(&container); err != nil {
-			log.Fatal(err)
+                        log.Fatalf("Erroring decoding container JSON: %s", err)
 		}
 	}
+        resp.Body.Close()
 	return container
 }
 
@@ -220,27 +246,27 @@ func (s *Server) getImages() []*Image {
 	path := "/images/json?all=0"
 	c, err := newClient(s.DockerPath)
 	if err != nil {
-		log.Fatal(err)
+            log.Fatalf("Error connecting to Docker: %s", err)
 	}
 	defer c.Close()
 	req, err := http.NewRequest("GET", path, nil)
 	if err != nil {
-		log.Fatal(err)
+            log.Fatalf("Error requesting images from Docker: %s", err)
 	}
 
 	resp, err := c.Do(req)
 	if err != nil {
-		log.Fatal(err)
+            log.Fatalf("Error requesting images from Docker: %s", err)
 	}
-	defer resp.Body.Close()
 
 	var images []*Image
 	if resp.StatusCode == http.StatusOK {
 		d := json.NewDecoder(resp.Body)
 		if err = d.Decode(&images); err != nil {
-			log.Fatal(err)
+                        log.Fatalf("Erroring decoding image JSON: %s", err)
 		}
 	}
+        resp.Body.Close()
 	return images
 }
 
@@ -248,11 +274,25 @@ func (s *Server) pushContainers(jobs chan *Job, group *sync.WaitGroup) {
 	group.Add(1)
 	defer group.Done()
 	containers := s.getContainers()
-
+	host := s.RaftServer.Name()
 	jobs <- &Job{
-		Path: "/agent/containers/",
-		Data: containers,
-		Name: "containers",
+		Data:   containers,
+		Name:   fmt.Sprintf("containers:%s", host),
+		Encode: true,
+	}
+	for _, container := range containers {
+		jobs <- &Job{
+			//Data:   s.GetConnectionString(host),
+			Data:   host,
+			Name:   fmt.Sprintf("container:host:%s", container.Id),
+			Encode: false,
+		}
+                c := s.inspectContainer(container.Id)
+		jobs <- &Job{
+			Data:   c,
+			Name:   fmt.Sprintf("container:%s", container.Id),
+                        Encode: true,
+		}
 	}
 }
 
@@ -261,14 +301,10 @@ func (s *Server) pushImages(jobs chan *Job, group *sync.WaitGroup) {
 	defer group.Done()
 	images := s.getImages()
 	jobs <- &Job{
-		Path: "/agent/images/",
-		Data: images,
-		Name: "images",
+		Data:   images,
+		Name:   fmt.Sprintf("images:%s", s.RaftServer.Name()),
+		Encode: true,
 	}
-}
-
-func (s *Server) Update() {
-
 }
 
 // Leader returns the current leader.
@@ -282,12 +318,21 @@ func (s *Server) Leader() string {
 }
 
 func (s *Server) GetConnectionString(node string) string {
-	// master
+	// self
 	if node == s.RaftServer.Name() {
-		return s.RaftServer.Leader()
+		return s.ConnectionString()
+	}
+	// master
+	if node == s.RaftServer.Leader() {
+		if s.LeaderURL == "" {
+			return s.ConnectionString()
+		} else {
+			return fmt.Sprintf("http://%s", s.LeaderURL)
+		}
 	}
 	// check peers
 	for _, p := range s.RaftServer.Peers() {
+		log.Printf("Peer: %s", p.ConnectionString)
 		if p.Name == node {
 			return p.ConnectionString
 		}
@@ -326,7 +371,6 @@ func (s *Server) redirectToLeader(w http.ResponseWriter, req *http.Request) {
 	if s.Leader() != "" {
 		leader := s.GetConnectionString(s.Leader())
 		newPath := fmt.Sprintf("%s%s", leader, req.URL.Path)
-		log.Println(newPath)
 		http.Redirect(w, req, newPath, http.StatusFound)
 	} else {
 		log.Println("Error: Leader Unknown")
@@ -336,7 +380,7 @@ func (s *Server) redirectToLeader(w http.ResponseWriter, req *http.Request) {
 
 // Returns the connection string.
 func (s *Server) ConnectionString() string {
-	return fmt.Sprintf("http://%s:%d", s.host, s.port)
+	return fmt.Sprintf("http://%s:%d", s.Host, s.Port)
 }
 
 // Starts the server.
@@ -356,7 +400,6 @@ func (s *Server) ListenAndServe(leader string) error {
 
 	if leader != "" {
 		// Join to leader if specified.
-
 		log.Println("Attempting to join leader:", leader)
 
 		if !s.RaftServer.IsLogEmpty() {
@@ -387,7 +430,7 @@ func (s *Server) ListenAndServe(leader string) error {
 
 	// Initialize and start HTTP server.
 	s.httpServer = &http.Server{
-		Addr:    fmt.Sprintf(":%d", s.port),
+		Addr:    fmt.Sprintf(":%d", s.Port),
 		Handler: s.Router,
 	}
 
@@ -395,15 +438,20 @@ func (s *Server) ListenAndServe(leader string) error {
 	s.Router.HandleFunc("/db/{key}", s.writeHandler).Methods("POST")
 	s.Router.HandleFunc("/join", s.joinHandler).Methods("POST")
 	s.Router.HandleFunc("/sync", s.syncHandler).Methods("GET").Name("sync")
-	s.Router.HandleFunc("/update", s.updateHandler).Methods("GET").Name("update")
-	s.Router.HandleFunc("/{apiVersion:.*}/{action:.*}/{format:.*}", s.actionHandler).Methods("GET", "POST")
+	s.Router.HandleFunc("/docker/{path:.*}", s.dockerHandler).Methods("GET", "POST").Name("docker")
+	//s.Router.HandleFunc("/{apiVersion:.*}/containers/json", s.containersHandler).Methods("GET", "POST")
+	//s.Router.HandleFunc("/{apiVersion:.*}/images/json", s.imagesHandler).Methods("GET", "POST")
+	//s.Router.HandleFunc("/{apiVersion:.*}/containers/{containerId:.*}/restart", s.containerRestartHandler).Methods("GET", "POST")
+	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/json", s.containersHandler).Methods("GET", "POST")
+	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/json", s.imagesHandler).Methods("GET", "POST")
+	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/restart", s.containerRestartHandler).Methods("GET", "POST")
 	s.Router.HandleFunc("/", s.indexHandler).Methods("GET")
 
 	log.Printf("Server name: %s\n", s.RaftServer.Name())
 	log.Println("Listening at:", s.ConnectionString())
 
 	// start sync
-	go s.syncDocker(1)
+	go s.syncDocker(5)
 
 	return s.httpServer.ListenAndServe()
 }
@@ -475,12 +523,6 @@ func (s *Server) syncHandler(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// updates the local node
-func (s *Server) updateHandler(w http.ResponseWriter, req *http.Request) {
-	s.Update()
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // handles reads from the db
 func (s *Server) readHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
@@ -522,18 +564,86 @@ func (s *Server) writeHandler(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
-func (s *Server) actionHandler(w http.ResponseWriter, req *http.Request) {
+func (s *Server) containersHandler(w http.ResponseWriter, req *http.Request) {
+	all := req.FormValue("all")
+	containersResponse(s, w, all)
+}
+
+func (s *Server) imagesHandler(w http.ResponseWriter, req *http.Request) {
+	imageActionResponse(s, w)
+}
+
+func (s *Server) containerRestartHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
-	switch vars["action"] {
-	case "containers":
-		s.Sync()
-		all := req.FormValue("all")
-		containerActionResponse(s, w, all)
-		return
-	case "images":
-		s.Sync()
-		imageActionResponse(s, w)
+	req.ParseForm()
+	// Read the value from the POST body.
+	b, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	http.Error(w, "404", http.StatusNotFound)
+	value := string(b)
+	command := NewContainerRestartCommand(vars["containerId"], vars["apiVersion"], req.URL.Path, req.Form, s)
+	if _, err := s.RaftServer.Do(command); err != nil {
+		switch err {
+		case raft.NotLeaderError:
+			// re-post to leader
+			host := s.GetConnectionString(s.Leader())
+			url := fmt.Sprintf("%s%s", host, req.URL.Path)
+			buf := bytes.NewBufferString(value)
+			res, err := http.Post(url, "text/plain", buf)
+			if err != nil {
+				log.Printf("Error redirecting to the leader for containerRestart: %s\n", err)
+				return
+			}
+			res.Body.Close()
+		default:
+			log.Println("Error: ", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
+func handlerError(msg string, status int, w http.ResponseWriter) {
+	w.WriteHeader(status)
+	w.Write([]byte(msg))
+}
+
+func (s *Server) dockerHandler(w http.ResponseWriter, req *http.Request) {
+	vars := mux.Vars(req)
+	path := fmt.Sprintf("/%s", strings.Replace(vars["path"], "docker", "", 1))
+	log.Printf("Received Docker request: %s", path)
+	c, err := newClient(s.DockerPath)
+	defer c.Close()
+	if err != nil {
+		msg := fmt.Sprintf("Error connecting to Docker: %s", err)
+		log.Println(msg)
+		handlerError(msg, http.StatusInternalServerError, w)
+		return
+	}
+	r, err := http.NewRequest(req.Method, path, nil)
+	if err != nil {
+		msg := fmt.Sprintf("Error connecting to Docker: %s", err)
+		log.Println(msg)
+		handlerError(msg, http.StatusInternalServerError, w)
+		return
+	}
+	resp, err := c.Do(r)
+	defer resp.Body.Close()
+	if err != nil {
+		msg := fmt.Sprintf("Error connecting to Docker: %s", err)
+		log.Println(msg)
+		handlerError(msg, http.StatusInternalServerError, w)
+		return
+	}
+	contents, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		msg := fmt.Sprintf("Error connecting to Docker: %s", err)
+		log.Println(msg)
+		handlerError(msg, http.StatusInternalServerError, w)
+		return
+	}
+	w.Write([]byte(contents))
 }

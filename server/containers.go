@@ -4,26 +4,26 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/dotcloud/docker"
 	"log"
 	"net/http"
 	"strings"
 )
 
-func containerActionResponse(s *Server, w http.ResponseWriter, all string) {
+func containersResponse(s *Server, w http.ResponseWriter, all string) {
 	var allHosts []string
 	allHosts = append(allHosts, s.RaftServer.Name())
 	for _, p := range s.RaftServer.Peers() {
 		allHosts = append(allHosts, p.Name)
 	}
 	value := "{}"
-	var allContainers []*docker.APIContainers
+	var allContainers []APIContainer
 	for _, host := range allHosts {
+                log.Printf("Getting containers for %s", host)
 		key := fmt.Sprintf("containers:%s", host)
 		value = s.db.Get(key)
 		// filter out not running
 		if all == "" && value != "" {
-			var containers []*docker.APIContainers
+			var containers []APIContainer
 			s := bytes.NewBufferString(value)
 			d := json.NewDecoder(s)
 			if err := d.Decode(&containers); err != nil {
