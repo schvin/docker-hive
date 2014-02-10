@@ -36,22 +36,22 @@ type (
 		VirtualSize int
 	}
 
-        Port struct {
-            IP  string
-            PrivatePort int
-            PublicPort  int
-            Type    string
-        }
+	Port struct {
+		IP          string
+		PrivatePort int
+		PublicPort  int
+		Type        string
+	}
 
-        APIContainer struct {
-            Id  string
-            Created int
-            Image   string
-            Status  string
-            Command string
-            Ports   []Port
-            Names   []string
-        }
+	APIContainer struct {
+		Id      string
+		Created int
+		Image   string
+		Status  string
+		Command string
+		Ports   []Port
+		Names   []string
+	}
 
 	Server struct {
 		name       string
@@ -92,8 +92,8 @@ func New(path string, host string, port int, dockerPath string, leader string) *
 	return s
 }
 
-func newClient(path string) (*httputil.ClientConn, error) {
-	conn, err := net.Dial("unix", path)
+func (s *Server) newDockerClient() (*httputil.ClientConn, error) {
+	conn, err := net.Dial("unix", s.DockerPath)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +131,7 @@ func (s *Server) updater(jobs <-chan *Job, group *sync.WaitGroup) {
 		buf := bytes.NewBuffer(nil)
 		if obj.Encode {
 			if err := json.NewEncoder(buf).Encode(obj.Data); err != nil {
-                                log.Printf("Error encoding to JSON: %s", err)
+				log.Printf("Error encoding to JSON: %s", err)
 				continue
 			}
 		} else {
@@ -147,7 +147,7 @@ func (s *Server) updater(jobs <-chan *Job, group *sync.WaitGroup) {
 			log.Printf("Error parsing data: %s\n", err)
 			return
 		}
-                host := s.GetConnectionString(s.Leader())
+		host := s.GetConnectionString(s.Leader())
 		url := fmt.Sprintf("%s%s", host, path.String())
 		resp, err := http.Post(url, "text/plain", buf)
 		if err != nil {
@@ -186,87 +186,87 @@ func (s *Server) updater(jobs <-chan *Job, group *sync.WaitGroup) {
 
 func (s *Server) getContainers() []APIContainer {
 	path := fmt.Sprintf("/containers/json?all=1")
-	c, err := newClient(s.DockerPath)
+	c, err := s.newDockerClient()
 	defer c.Close()
 	if err != nil {
-            log.Fatalf("Error connecting to Docker: %s", err)
+		log.Fatalf("Error connecting to Docker: %s", err)
 	}
 	req, err := http.NewRequest("GET", path, nil)
 	if err != nil {
-            log.Fatalf("Error requesting containers from Docker: %s", err)
+		log.Fatalf("Error requesting containers from Docker: %s", err)
 	}
 
 	resp, err := c.Do(req)
 	if err != nil {
-            log.Fatalf("Error requesting containers from Docker: %s", err)
+		log.Fatalf("Error requesting containers from Docker: %s", err)
 	}
 	defer resp.Body.Close()
 
-        var containers []APIContainer
+	var containers []APIContainer
 	if resp.StatusCode == http.StatusOK {
-                contents, _ := ioutil.ReadAll(resp.Body)
-                r := bytes.NewReader(contents)
+		contents, _ := ioutil.ReadAll(resp.Body)
+		r := bytes.NewReader(contents)
 		d := json.NewDecoder(r)
 		if err = d.Decode(&containers); err != nil {
-                        log.Fatalf("Erroring decoding container JSON: %s", err)
+			log.Fatalf("Erroring decoding container JSON: %s", err)
 		}
-                resp.Body.Close()
+		resp.Body.Close()
 	}
 	return containers
 }
 
 func (s *Server) inspectContainer(id string) *docker.Container {
 	path := fmt.Sprintf("/containers/%s/json?all=1", id)
-	c, err := newClient(s.DockerPath)
+	c, err := s.newDockerClient()
 	defer c.Close()
 	if err != nil {
-            log.Fatalf("Error connecting to Docker: %s", err)
+		log.Fatalf("Error connecting to Docker: %s", err)
 	}
 	req, err := http.NewRequest("GET", path, nil)
 	if err != nil {
-            log.Fatalf("Error inspecting container from Docker: %s", err)
+		log.Fatalf("Error inspecting container from Docker: %s", err)
 	}
 	resp, err := c.Do(req)
 	if err != nil {
-            log.Fatalf("Error inspecting container from Docker: %s", err)
+		log.Fatalf("Error inspecting container from Docker: %s", err)
 	}
 
 	var container *docker.Container
 	if resp.StatusCode == http.StatusOK {
 		d := json.NewDecoder(resp.Body)
 		if err = d.Decode(&container); err != nil {
-                        log.Fatalf("Erroring decoding container JSON: %s", err)
+			log.Fatalf("Erroring decoding container JSON: %s", err)
 		}
 	}
-        resp.Body.Close()
+	resp.Body.Close()
 	return container
 }
 
 func (s *Server) getImages() []*Image {
 	path := "/images/json?all=0"
-	c, err := newClient(s.DockerPath)
+	c, err := s.newDockerClient()
 	if err != nil {
-            log.Fatalf("Error connecting to Docker: %s", err)
+		log.Fatalf("Error connecting to Docker: %s", err)
 	}
 	defer c.Close()
 	req, err := http.NewRequest("GET", path, nil)
 	if err != nil {
-            log.Fatalf("Error requesting images from Docker: %s", err)
+		log.Fatalf("Error requesting images from Docker: %s", err)
 	}
 
 	resp, err := c.Do(req)
 	if err != nil {
-            log.Fatalf("Error requesting images from Docker: %s", err)
+		log.Fatalf("Error requesting images from Docker: %s", err)
 	}
 
 	var images []*Image
 	if resp.StatusCode == http.StatusOK {
 		d := json.NewDecoder(resp.Body)
 		if err = d.Decode(&images); err != nil {
-                        log.Fatalf("Erroring decoding image JSON: %s", err)
+			log.Fatalf("Erroring decoding image JSON: %s", err)
 		}
 	}
-        resp.Body.Close()
+	resp.Body.Close()
 	return images
 }
 
@@ -281,17 +281,17 @@ func (s *Server) pushContainers(jobs chan *Job, group *sync.WaitGroup) {
 		Encode: true,
 	}
 	for _, container := range containers {
+		data := fmt.Sprintf("%s::%s", host, s.GetConnectionString(host))
 		jobs <- &Job{
-			//Data:   s.GetConnectionString(host),
-			Data:   host,
+			Data:   data,
 			Name:   fmt.Sprintf("container:host:%s", container.Id),
 			Encode: false,
 		}
-                c := s.inspectContainer(container.Id)
+		c := s.inspectContainer(container.Id)
 		jobs <- &Job{
 			Data:   c,
 			Name:   fmt.Sprintf("container:%s", container.Id),
-                        Encode: true,
+			Encode: true,
 		}
 	}
 }
@@ -451,7 +451,7 @@ func (s *Server) ListenAndServe(leader string) error {
 	log.Println("Listening at:", s.ConnectionString())
 
 	// start sync
-	go s.syncDocker(5)
+	go s.syncDocker(1)
 
 	return s.httpServer.ListenAndServe()
 }
@@ -615,7 +615,7 @@ func (s *Server) dockerHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	path := fmt.Sprintf("/%s", strings.Replace(vars["path"], "docker", "", 1))
 	log.Printf("Received Docker request: %s", path)
-	c, err := newClient(s.DockerPath)
+	c, err := s.newDockerClient()
 	defer c.Close()
 	if err != nil {
 		msg := fmt.Sprintf("Error connecting to Docker: %s", err)

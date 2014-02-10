@@ -18,7 +18,6 @@ func containersResponse(s *Server, w http.ResponseWriter, all string) {
 	value := "{}"
 	var allContainers []APIContainer
 	for _, host := range allHosts {
-                log.Printf("Getting containers for %s", host)
 		key := fmt.Sprintf("containers:%s", host)
 		value = s.db.Get(key)
 		// filter out not running

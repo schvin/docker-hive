@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 )
 
@@ -108,7 +109,7 @@ type ContainerRestartCommand struct {
 	ApiVersion  string     `json:"api_version"`
 	Path        string     `json:"path"`
 	Params      url.Values `json:"params"`
-        Server      *Server
+	Server      *Server
 }
 
 // container restart command
@@ -118,7 +119,7 @@ func NewContainerRestartCommand(containerId string, apiVersion string, path stri
 		ApiVersion:  apiVersion,
 		Path:        path,
 		Params:      params,
-                Server:     server,
+		Server:      server,
 	}
 }
 
@@ -131,13 +132,27 @@ func (c *ContainerRestartCommand) Apply(server raft.Server) (interface{}, error)
 	db := server.Context().(*db.DB)
 	// look for container
 	key := fmt.Sprintf("container:host:%s", c.ContainerId)
-	host := db.Find(key)
-        if host == server.Name() {
-	    log.Printf("Restarting container %s", c.ContainerId)
-            h := fmt.Sprintf("http://%s:%d", c.Server.Host, c.Server.Port)
-            path := fmt.Sprintf("%s/docker%s?%s", h, c.Path, c.Params.Encode())
-            // TODO: finish container restart
-            log.Printf("ContainerRestartCommand.Apply %s", path)
-        }
+	hostInfo := db.Find(key)
+	if hostInfo == "" {
+		log.Fatalf("Unable to find Docker host for %s", c.ContainerId)
+	}
+	parts := strings.Split(hostInfo, "::")
+	serverName := parts[0]
+	host := parts[1]
+	if serverName == server.Name() {
+		log.Printf("Restarting container %s on %s", c.ContainerId, serverName)
+		path := fmt.Sprintf("%s/docker%s?%s", host, c.Path, c.Params.Encode())
+		log.Printf("ContainerRestartCommand.Apply %s", path)
+		//dockerAPIrequest(path, "POST", c.Server)
+		log.Printf("Docker API Request: %s", path)
+		client := &http.Client{}
+		req, err := http.NewRequest("POST", path, nil)
+		if err != nil {
+			log.Fatalf("Error communicating with Docker: %s", err)
+			return nil, err
+		}
+		// send to docker
+		go client.Do(req)
+	}
 	return nil, nil
 }
