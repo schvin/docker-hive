@@ -439,10 +439,8 @@ func (s *Server) ListenAndServe(leader string) error {
 	s.Router.HandleFunc("/join", s.joinHandler).Methods("POST")
 	s.Router.HandleFunc("/sync", s.syncHandler).Methods("GET").Name("sync")
 	s.Router.HandleFunc("/docker/{path:.*}", s.dockerHandler).Methods("GET", "POST").Name("docker")
-	//s.Router.HandleFunc("/{apiVersion:.*}/containers/json", s.containersHandler).Methods("GET", "POST")
-	//s.Router.HandleFunc("/{apiVersion:.*}/images/json", s.imagesHandler).Methods("GET", "POST")
-	//s.Router.HandleFunc("/{apiVersion:.*}/containers/{containerId:.*}/restart", s.containerRestartHandler).Methods("GET", "POST")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/json", s.containersHandler).Methods("GET", "POST")
+	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/json", s.containerInspectHandler).Methods("GET")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/json", s.imagesHandler).Methods("GET", "POST")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/restart", s.containerRestartHandler).Methods("GET", "POST")
 	s.Router.HandleFunc("/", s.indexHandler).Methods("GET")
@@ -573,37 +571,48 @@ func (s *Server) imagesHandler(w http.ResponseWriter, req *http.Request) {
 	imageActionResponse(s, w)
 }
 
-func (s *Server) containerRestartHandler(w http.ResponseWriter, req *http.Request) {
+func (s *Server) proxyDockerRequest(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
-	req.ParseForm()
+	containerId := vars["containerId"]
 	// Read the value from the POST body.
-	b, err := ioutil.ReadAll(req.Body)
+	_, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	value := string(b)
-	command := NewContainerRestartCommand(vars["containerId"], vars["apiVersion"], req.URL.Path, req.Form, s)
-	if _, err := s.RaftServer.Do(command); err != nil {
-		switch err {
-		case raft.NotLeaderError:
-			// re-post to leader
-			host := s.GetConnectionString(s.Leader())
-			url := fmt.Sprintf("%s%s", host, req.URL.Path)
-			buf := bytes.NewBufferString(value)
-			res, err := http.Post(url, "text/plain", buf)
-			if err != nil {
-				log.Printf("Error redirecting to the leader for containerRestart: %s\n", err)
-				return
-			}
-			res.Body.Close()
-		default:
-			log.Println("Error: ", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-		return
+	db := s.RaftServer.Context().(*db.DB)
+	// look for container
+	key := fmt.Sprintf("container:host:%s", containerId)
+	hostInfo := db.Find(key)
+	if hostInfo == "" {
+		log.Fatalf("Unable to find Docker host for %s", containerId)
 	}
-	w.WriteHeader(http.StatusAccepted)
+	parts := strings.Split(hostInfo, "::")
+	//serverName := parts[0]
+	host := parts[1]
+	//value := string(b)
+	params := req.Form
+	path := fmt.Sprintf("%s/docker%s?%s", host, req.URL.Path, params.Encode())
+	client := &http.Client{}
+	r, err := http.NewRequest(req.Method, path, nil)
+	if err != nil {
+		log.Fatalf("Error communicating with Docker: %s", err)
+	}
+	// send to docker
+	resp, err := client.Do(r)
+	if err != nil {
+		log.Fatalf("Error communicating with Docker: %s", err)
+	}
+	defer resp.Body.Close()
+	contents, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalf("Error response from Docker: %s", err)
+	}
+	w.Write([]byte(contents))
+}
+
+func (s *Server) containerRestartHandler(w http.ResponseWriter, req *http.Request) {
+	s.proxyDockerRequest(w, req)
 }
 
 func handlerError(msg string, status int, w http.ResponseWriter) {
@@ -644,6 +653,46 @@ func (s *Server) dockerHandler(w http.ResponseWriter, req *http.Request) {
 		log.Println(msg)
 		handlerError(msg, http.StatusInternalServerError, w)
 		return
+	}
+	w.Write([]byte(contents))
+}
+
+func (s *Server) containerInspectHandler(w http.ResponseWriter, req *http.Request) {
+	vars := mux.Vars(req)
+	containerId := vars["containerId"]
+	// Read the value from the POST body.
+	_, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	db := s.RaftServer.Context().(*db.DB)
+	// look for container
+	key := fmt.Sprintf("container:host:%s", containerId)
+	hostInfo := db.Find(key)
+	if hostInfo == "" {
+		log.Fatalf("Unable to find Docker host for %s", containerId)
+	}
+	parts := strings.Split(hostInfo, "::")
+	//serverName := parts[0]
+	host := parts[1]
+	//value := string(b)
+	params := req.Form
+	path := fmt.Sprintf("%s/docker%s?%s", host, req.URL.Path, params.Encode())
+	client := &http.Client{}
+	r, err := http.NewRequest(req.Method, path, nil)
+	if err != nil {
+		log.Fatalf("Error communicating with Docker: %s", err)
+	}
+	// send to docker
+	resp, err := client.Do(r)
+	if err != nil {
+		log.Fatalf("Error communicating with Docker: %s", err)
+	}
+	defer resp.Body.Close()
+	contents, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalf("Error response from Docker: %s", err)
 	}
 	w.Write([]byte(contents))
 }

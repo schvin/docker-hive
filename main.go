@@ -64,7 +64,6 @@ func main() {
 	raft.RegisterCommand(&server.WriteCommand{})
 	raft.RegisterCommand(&server.ActionCommand{})
 	raft.RegisterCommand(&server.SyncCommand{})
-	raft.RegisterCommand(&server.ContainerRestartCommand{})
 
 	// Set the data directory.
 	if flag.NArg() == 0 {
