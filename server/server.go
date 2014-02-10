@@ -443,6 +443,8 @@ func (s *Server) ListenAndServe(leader string) error {
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/json", s.containerInspectHandler).Methods("GET")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/json", s.imagesHandler).Methods("GET", "POST")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/restart", s.containerRestartHandler).Methods("GET", "POST")
+	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/start", s.containerStartHandler).Methods("POST")
+	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/stop", s.containerStopHandler).Methods("POST")
 	s.Router.HandleFunc("/", s.indexHandler).Methods("GET")
 
 	log.Printf("Server name: %s\n", s.RaftServer.Name())
@@ -612,6 +614,14 @@ func (s *Server) proxyDockerRequest(w http.ResponseWriter, req *http.Request) {
 }
 
 func (s *Server) containerRestartHandler(w http.ResponseWriter, req *http.Request) {
+	s.proxyDockerRequest(w, req)
+}
+
+func (s *Server) containerStartHandler(w http.ResponseWriter, req *http.Request) {
+	s.proxyDockerRequest(w, req)
+}
+
+func (s *Server) containerStopHandler(w http.ResponseWriter, req *http.Request) {
 	s.proxyDockerRequest(w, req)
 }
 
