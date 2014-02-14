@@ -439,7 +439,8 @@ func (s *Server) ListenAndServe(leader string) error {
 	s.Router.HandleFunc("/join", s.joinHandler).Methods("POST")
 	s.Router.HandleFunc("/sync", s.syncHandler).Methods("GET").Name("sync")
 	s.Router.HandleFunc("/docker/{path:.*}", s.dockerHandler).Methods("GET", "POST").Name("docker")
-	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/json", s.containersHandler).Methods("GET", "POST")
+	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/json", s.containersHandler).Methods("GET")
+	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/create", s.containerCreateHandler).Methods("POST")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/json", s.containerInspectHandler).Methods("GET")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}", s.containerRemoveHandler).Methods("DELETE")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/json", s.imagesHandler).Methods("GET", "POST")
@@ -577,7 +578,26 @@ func (s *Server) imagesHandler(w http.ResponseWriter, req *http.Request) {
 	imageActionResponse(s, w)
 }
 
-func (s *Server) proxyDockerRequest(w http.ResponseWriter, req *http.Request) {
+func (s *Server) proxyRequest(method string, path string, w http.ResponseWriter) {
+	client := &http.Client{}
+	r, err := http.NewRequest(method, path, nil)
+	if err != nil {
+		log.Fatalf("Error communicating with Docker: %s", err)
+	}
+	// send to docker
+	resp, err := client.Do(r)
+	if err != nil {
+		log.Fatalf("Error communicating with Docker: %s", err)
+	}
+	defer resp.Body.Close()
+	contents, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalf("Error response from Docker: %s", err)
+	}
+	w.Write([]byte(contents))
+}
+
+func (s *Server) proxyDockerContainerRequest(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	containerId := vars["containerId"]
 	// Read the value from the POST body.
@@ -597,51 +617,43 @@ func (s *Server) proxyDockerRequest(w http.ResponseWriter, req *http.Request) {
 	host := parts[1]
 	params := req.Form
 	path := fmt.Sprintf("%s/docker%s?%s", host, req.URL.Path, params.Encode())
-	client := &http.Client{}
-	r, err := http.NewRequest(req.Method, path, nil)
-	if err != nil {
-		log.Fatalf("Error communicating with Docker: %s", err)
-	}
-	// send to docker
-	resp, err := client.Do(r)
-	if err != nil {
-		log.Fatalf("Error communicating with Docker: %s", err)
-	}
-	defer resp.Body.Close()
-	contents, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatalf("Error response from Docker: %s", err)
-	}
-	w.Write([]byte(contents))
+        s.proxyRequest(req.Method, path, w)
+}
+
+func (s *Server) containerCreateHandler(w http.ResponseWriter, req *http.Request) {
+    host := s.ConnectionString()
+    params := req.Form
+    path := fmt.Sprintf("%s/docker%s?%s", host, req.URL.Path, params.Encode())
+    s.proxyRequest(req.Method, path, w)
 }
 
 func (s *Server) containerRestartHandler(w http.ResponseWriter, req *http.Request) {
-	s.proxyDockerRequest(w, req)
+	s.proxyDockerContainerRequest(w, req)
 }
 
 func (s *Server) containerStartHandler(w http.ResponseWriter, req *http.Request) {
-	s.proxyDockerRequest(w, req)
+	s.proxyDockerContainerRequest(w, req)
 }
 
 func (s *Server) containerStopHandler(w http.ResponseWriter, req *http.Request) {
-	s.proxyDockerRequest(w, req)
+	s.proxyDockerContainerRequest(w, req)
 }
 
 func (s *Server) containerRemoveHandler(w http.ResponseWriter, req *http.Request) {
 	// TODO: check if running and error if is
-	s.proxyDockerRequest(w, req)
+	s.proxyDockerContainerRequest(w, req)
 }
 
 func (s *Server) containerTopHandler(w http.ResponseWriter, req *http.Request) {
-	s.proxyDockerRequest(w, req)
+	s.proxyDockerContainerRequest(w, req)
 }
 
 func (s *Server) containerChangesHandler(w http.ResponseWriter, req *http.Request) {
-	s.proxyDockerRequest(w, req)
+	s.proxyDockerContainerRequest(w, req)
 }
 
 func (s *Server) containerKillHandler(w http.ResponseWriter, req *http.Request) {
-	s.proxyDockerRequest(w, req)
+	s.proxyDockerContainerRequest(w, req)
 }
 
 func handlerError(msg string, status int, w http.ResponseWriter) {
@@ -687,41 +699,5 @@ func (s *Server) dockerHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func (s *Server) containerInspectHandler(w http.ResponseWriter, req *http.Request) {
-	vars := mux.Vars(req)
-	containerId := vars["containerId"]
-	// Read the value from the POST body.
-	_, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	db := s.RaftServer.Context().(*db.DB)
-	// look for container
-	key := fmt.Sprintf("container:host:%s", containerId)
-	hostInfo := db.Find(key)
-	if hostInfo == "" {
-		log.Fatalf("Unable to find Docker host for %s", containerId)
-	}
-	parts := strings.Split(hostInfo, "::")
-	//serverName := parts[0]
-	host := parts[1]
-	//value := string(b)
-	params := req.Form
-	path := fmt.Sprintf("%s/docker%s?%s", host, req.URL.Path, params.Encode())
-	client := &http.Client{}
-	r, err := http.NewRequest(req.Method, path, nil)
-	if err != nil {
-		log.Fatalf("Error communicating with Docker: %s", err)
-	}
-	// send to docker
-	resp, err := client.Do(r)
-	if err != nil {
-		log.Fatalf("Error communicating with Docker: %s", err)
-	}
-	defer resp.Body.Close()
-	contents, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatalf("Error response from Docker: %s", err)
-	}
-	w.Write([]byte(contents))
+	s.proxyDockerContainerRequest(w, req)
 }
