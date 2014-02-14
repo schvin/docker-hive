@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/dotcloud/docker"
-	"github.com/ehazlett/docker-cluster/db"
+	"github.com/ehazlett/docker-hive/db"
 	"github.com/goraft/raft"
 	"github.com/gorilla/mux"
 	"io/ioutil"

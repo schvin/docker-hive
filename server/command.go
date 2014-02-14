@@ -2,7 +2,7 @@ package server
 
 import (
 	"fmt"
-	"github.com/ehazlett/docker-cluster/db"
+	"github.com/ehazlett/docker-hive/db"
 	"github.com/goraft/raft"
 	"log"
 	"net/http"

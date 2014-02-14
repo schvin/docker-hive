@@ -10,4 +10,4 @@ test:
 fmt:
 	@go fmt ./...
 clean:
-	@rm -rf docker-cluster
+	@rm -rf docker-hive

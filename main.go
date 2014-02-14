@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/ehazlett/docker-cluster/server"
+	"github.com/ehazlett/docker-hive/server"
 	"github.com/goraft/raft"
 	"log"
 	"math/rand"
