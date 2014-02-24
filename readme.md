@@ -5,10 +5,10 @@ This is experimental cluster support for Docker.  It uses Raft for communication
 This shows an example between two Docker hosts.
 
 Host 1:
-`docker-hive -h 10.1.1.10 /tmp/docker-hive`
+`docker-hive -n 10.1.1.10 /tmp/docker-hive`
 
 Host 2:
-`docker-hive -h 10.1.1.20 -join 10.1.1.10:4500 /tmp/docker-hive`
+`docker-hive -n 10.1.1.20 -join 10.1.1.10:4500 /tmp/docker-hive`
 
 Now you will be able to use the standard Docker client with any of the nodes in the cluster:
 
@@ -18,4 +18,4 @@ Now you will be able to use the standard Docker client with any of the nodes in 
 * `docker -H tcp://10.1.1.20:4500 ps`
 
 # Status
-Currently, only viewing containers and images are supported (`docker ps`, `docker ps -a`, and `docker images`).  Remaining operations will be added.
+Very early development.  Not for production.
