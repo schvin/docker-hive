@@ -4,22 +4,24 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"strings"
 )
 
 func containersResponse(s *Server, w http.ResponseWriter, all string) {
-	var allHosts []string
-	allHosts = append(allHosts, s.RaftServer.Name())
-	for _, p := range s.RaftServer.Peers() {
-		allHosts = append(allHosts, p.Name)
-	}
 	value := "{}"
 	var allContainers []APIContainer
-	for _, host := range allHosts {
-		key := fmt.Sprintf("containers:%s", host)
-		value = s.db.Get(key)
+	for _, host := range s.AllNodeConnectionStrings() {
+		path := fmt.Sprintf("%s/docker/containers/json?all=1", host)
+		resp, err := http.Get(path)
+		if err != nil {
+			log.Printf("Error getting host containers for %s: %s", host, err)
+			continue
+		}
+		contents, err := ioutil.ReadAll(resp.Body)
+		value = string(contents)
 		// filter out not running
 		if all == "" && value != "" {
 			var containers []APIContainer

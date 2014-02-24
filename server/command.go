@@ -52,7 +52,7 @@ func NewActionCommand(node string, action string) *ActionCommand {
 }
 
 // name for log
-func (c *ActionCommand) CommandName() string { return "cluster:action" }
+func (c *ActionCommand) CommandName() string { return "hive:action" }
 
 // do action
 func (c *ActionCommand) Apply(server raft.Server) (interface{}, error) {
@@ -73,7 +73,7 @@ func NewSyncCommand(nodes []string) *SyncCommand {
 }
 
 // name for log
-func (c *SyncCommand) CommandName() string { return "cluster:sync" }
+func (c *SyncCommand) CommandName() string { return "hive:sync" }
 
 func update(jobs <-chan *UpdateJob, group *sync.WaitGroup) {
 	group.Add(1)

@@ -4,21 +4,23 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 )
 
-func imageActionResponse(s *Server, w http.ResponseWriter) {
-	var allHosts []string
-	allHosts = append(allHosts, s.RaftServer.Name())
-	for _, p := range s.RaftServer.Peers() {
-		allHosts = append(allHosts, p.Name)
-	}
+func imagesResponse(s *Server, w http.ResponseWriter) {
 	value := "{}"
 	var allImages []*Image
-	for _, host := range allHosts {
-		key := fmt.Sprintf("images:%s", host)
-		value = s.db.Get(key)
+	for _, host := range s.AllNodeConnectionStrings() {
+		path := fmt.Sprintf("%s/docker/images/json?all=1", host)
+		resp, err := http.Get(path)
+		if err != nil {
+			log.Printf("Error getting host images for %s: %s", host, err)
+			continue
+		}
+		contents, err := ioutil.ReadAll(resp.Body)
+		value = string(contents)
 		var images []*Image
 		s := bytes.NewBufferString(value)
 		d := json.NewDecoder(s)
@@ -33,7 +35,5 @@ func imageActionResponse(s *Server, w http.ResponseWriter) {
 	if err != nil {
 		log.Printf("Error marshaling images to JSON: %s", err)
 	}
-	//value = string(b)
-	//w.Write([]byte(value))
 	w.Write(b)
 }

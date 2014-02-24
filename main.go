@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const VERSION string = "0.0.1"
+const VERSION string = "0.0.2"
 
 var (
 	dockerPath string
@@ -30,7 +30,7 @@ func init() {
 	flag.BoolVar(&verbose, "v", false, "Enable verbose logging")
 	flag.BoolVar(&trace, "trace", false, "Raft trace debugging")
 	flag.BoolVar(&debug, "debug", false, "Raft debugging")
-	flag.StringVar(&host, "h", "", "Node hostname")
+	flag.StringVar(&host, "n", "", "Node hostname")
 	flag.IntVar(&port, "p", 4500, "Port")
 	flag.StringVar(&join, "join", "", "host:port of leader to join")
 	flag.Usage = func() {
@@ -76,7 +76,7 @@ func main() {
 	}
 
 	log.SetFlags(log.LstdFlags)
-	log.Printf("Docker Cluster %s\n", VERSION)
+	log.Printf("Docker Hive %s\n", VERSION)
 	s := server.New(path, host, port, dockerPath, join)
 
 	log.Fatal(s.ListenAndServe(join))
