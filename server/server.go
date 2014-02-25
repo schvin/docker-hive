@@ -67,8 +67,8 @@ type (
 	}
 )
 
+// Utility function for copying HTTP Headers.
 func copyHeaders(dst, src http.Header) {
-	// copy headers
 	for k, vv := range src {
 		for _, v := range vv {
 			dst.Add(k, v)
@@ -100,6 +100,8 @@ func New(path string, host string, port int, dockerPath string, leader string) *
 	return s
 }
 
+
+// Creates a new Docker client using the Docker unix socket.
 func (s *Server) newDockerClient() (*httputil.ClientConn, error) {
 	conn, err := net.Dial("unix", s.DockerPath)
 	if err != nil {
@@ -108,6 +110,8 @@ func (s *Server) newDockerClient() (*httputil.ClientConn, error) {
 	return httputil.NewClientConn(conn, nil), nil
 }
 
+
+// Utility function for getting all local Docker containers.
 func (s *Server) getContainers() []APIContainer {
 	path := fmt.Sprintf("/containers/json?all=1")
 	c, err := s.newDockerClient()
@@ -139,6 +143,8 @@ func (s *Server) getContainers() []APIContainer {
 	return containers
 }
 
+
+// Utility function for inspecting a local Docker container.
 func (s *Server) inspectContainer(id string) *docker.Container {
 	path := fmt.Sprintf("/containers/%s/json?all=1", id)
 	c, err := s.newDockerClient()
@@ -166,6 +172,7 @@ func (s *Server) inspectContainer(id string) *docker.Container {
 	return container
 }
 
+// Utility function for getting local Docker images.
 func (s *Server) getImages() []*Image {
 	path := "/images/json?all=0"
 	c, err := s.newDockerClient()
@@ -204,6 +211,7 @@ func (s *Server) Leader() string {
 	return l
 }
 
+// This returns the connection URL for the specified node.
 func (s *Server) GetConnectionString(node string) string {
 	// self
 	if node == s.RaftServer.Name() {
@@ -227,12 +235,12 @@ func (s *Server) GetConnectionString(node string) string {
 	return ""
 }
 
-// returns if this is the leader
+// This returns if this is the leader.
 func (s *Server) IsLeader() bool {
 	return s.RaftServer.State() == raft.Leader
 }
 
-// returns the current members.
+// This returns the current members.
 func (s *Server) Members() (members []string) {
 	peers := s.RaftServer.Peers()
 
@@ -242,7 +250,7 @@ func (s *Server) Members() (members []string) {
 	return
 }
 
-// returns all nodes in the cluster
+// This returns all nodes in the cluster.
 func (s *Server) AllNodes() []string {
 	var allHosts []string
 	allHosts = append(allHosts, s.RaftServer.Name())
@@ -252,6 +260,7 @@ func (s *Server) AllNodes() []string {
 	return allHosts
 }
 
+// This returns connection strings for all nodes in the cluster.
 func (s *Server) AllNodeConnectionStrings() []string {
 	var allHosts []string
 	allHosts = append(allHosts, s.ConnectionString())
@@ -261,7 +270,7 @@ func (s *Server) AllNodeConnectionStrings() []string {
 	return allHosts
 }
 
-// redirects requests to the cluster leader
+// Redirects requests to the cluster leader.
 func (s *Server) redirectToLeader(w http.ResponseWriter, req *http.Request) {
 	log.Printf("Redirecting %s", req.URL.Path)
 	if s.Leader() != "" {
@@ -382,6 +391,7 @@ func (s *Server) Join(leader string) error {
 	return nil
 }
 
+// Handles the join request.
 func (s *Server) joinHandler(w http.ResponseWriter, req *http.Request) {
 	command := &raft.DefaultJoinCommand{}
 
