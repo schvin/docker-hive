@@ -21,6 +21,7 @@ func containersResponse(s *Server, w http.ResponseWriter, all string) {
 			continue
 		}
 		contents, err := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
 		value = string(contents)
 		// filter out not running
 		if all == "" && value != "" {

@@ -20,6 +20,7 @@ func imagesResponse(s *Server, w http.ResponseWriter) {
 			continue
 		}
 		contents, err := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
 		value = string(contents)
 		var images []*Image
 		s := bytes.NewBufferString(value)
