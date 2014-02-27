@@ -15,9 +15,12 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 type (
@@ -60,10 +63,16 @@ type (
 		httpServer *http.Server
 		db         *db.DB
 		mutex      sync.RWMutex
+		waiter     *sync.WaitGroup
 		Router     *mux.Router
 		RaftServer raft.Server
 		DockerPath string
 		LeaderURL  string
+	}
+
+	ContainerInfo struct {
+		Container APIContainer
+		Host      string
 	}
 )
 
@@ -83,6 +92,7 @@ func New(path string, host string, port int, dockerPath string, leader string) *
 		Port:       port,
 		path:       path,
 		db:         db.New(),
+		waiter:     new(sync.WaitGroup),
 		Router:     mux.NewRouter(),
 		DockerPath: dockerPath,
 		LeaderURL:  leader,
@@ -100,7 +110,6 @@ func New(path string, host string, port int, dockerPath string, leader string) *
 	return s
 }
 
-
 // Creates a new Docker client using the Docker unix socket.
 func (s *Server) newDockerClient() (*httputil.ClientConn, error) {
 	conn, err := net.Dial("unix", s.DockerPath)
@@ -110,6 +119,40 @@ func (s *Server) newDockerClient() (*httputil.ClientConn, error) {
 	return httputil.NewClientConn(conn, nil), nil
 }
 
+// Finds a container among the cluster.
+func (s *Server) getContainer(id string) ContainerInfo {
+	found := false
+	containerInfo := ContainerInfo{}
+	for _, host := range s.AllNodeConnectionStrings() {
+		if found {
+			break
+		}
+		path := fmt.Sprintf("%s/docker/containers/json?all=1", host)
+		resp, err := http.Get(path)
+		if err != nil {
+			log.Printf("Error getting host containers for %s: %s", host, err)
+			continue
+		}
+		contents, err := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+		// filter out not running
+		var containers []APIContainer
+		c := bytes.NewBufferString(string(contents))
+		d := json.NewDecoder(c)
+		if err := d.Decode(&containers); err != nil {
+			log.Printf("Error decoding container JSON: %s", err)
+		}
+		for _, v := range containers {
+			if v.Id == id {
+				containerInfo = ContainerInfo{Container: v, Host: s.GetConnectionString(host)}
+				found = true
+				break
+			}
+		}
+	}
+	return containerInfo
+
+}
 
 // Utility function for getting all local Docker containers.
 func (s *Server) getContainers() []APIContainer {
@@ -142,7 +185,6 @@ func (s *Server) getContainers() []APIContainer {
 	}
 	return containers
 }
-
 
 // Utility function for inspecting a local Docker container.
 func (s *Server) inspectContainer(id string) *docker.Container {
@@ -264,8 +306,10 @@ func (s *Server) AllNodes() []string {
 func (s *Server) AllNodeConnectionStrings() []string {
 	var allHosts []string
 	allHosts = append(allHosts, s.ConnectionString())
-	for _, p := range s.RaftServer.Peers() {
-		allHosts = append(allHosts, s.GetConnectionString(p.Name))
+	if len(s.RaftServer.Peers()) > 0 {
+		for _, p := range s.RaftServer.Peers() {
+			allHosts = append(allHosts, s.GetConnectionString(p.Name))
+		}
 	}
 	return allHosts
 }
@@ -289,7 +333,7 @@ func (s *Server) ConnectionString() string {
 }
 
 // Starts the server.
-func (s *Server) ListenAndServe(leader string) error {
+func (s *Server) Start() (*sync.WaitGroup, error) {
 	var err error
 
 	log.Printf("Initializing Raft Server: %s", s.path)
@@ -302,7 +346,7 @@ func (s *Server) ListenAndServe(leader string) error {
 	}
 	transporter.Install(s.RaftServer, s)
 	s.RaftServer.Start()
-
+	leader := s.LeaderURL
 	if leader != "" {
 		// Join to leader if specified.
 		log.Println("Attempting to join leader:", leader)
@@ -361,7 +405,38 @@ func (s *Server) ListenAndServe(leader string) error {
 	log.Printf("Server name: %s\n", s.RaftServer.Name())
 	log.Println("Listening at:", s.ConnectionString())
 
-	return s.httpServer.ListenAndServe()
+	go s.listenAndServe()
+	s.waiter.Add(1)
+	go s.run()
+	return s.waiter, nil
+}
+
+func (s *Server) Stop() {
+	log.Println("Stopping server")
+	s.waiter.Done()
+}
+
+func (s *Server) listenAndServe() {
+	go func() {
+		s.httpServer.ListenAndServe()
+	}()
+}
+
+func (s *Server) run() {
+	sig := make(chan os.Signal)
+	signal.Notify(sig, os.Interrupt)
+
+	tick := time.Tick(1 * time.Second)
+
+run:
+	for {
+		select {
+		case <-tick:
+		case <-sig:
+			break run
+		}
+	}
+	s.Stop()
 }
 
 // Gorilla mux not providing the correct net/http HandleFunc() interface.
@@ -570,6 +645,7 @@ func (s *Server) proxyDockerRequest(w http.ResponseWriter, req *http.Request) {
 }
 
 func (s *Server) containerCreateHandler(w http.ResponseWriter, req *http.Request) {
+	// route request to designated node if present ; otherwise use self
 	params := req.Form
 	n := req.FormValue("node")
 	host := s.GetConnectionString(n)

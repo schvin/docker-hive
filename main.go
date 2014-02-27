@@ -79,5 +79,10 @@ func main() {
 	log.Printf("Docker Hive %s\n", VERSION)
 	s := server.New(path, host, port, dockerPath, join)
 
-	log.Fatal(s.ListenAndServe(join))
+	waiter, err := s.Start()
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+	waiter.Wait()
 }
