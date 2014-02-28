@@ -1,4 +1,4 @@
-# Docker Hive
+# Docker Hive [![Build Status](https://travis-ci.org/ehazlett/docker-hive.png?branch=master)](https://travis-ci.org/ehazlett/docker-hive)
 This is experimental cluster support for Docker.  It uses Raft for communication between Docker hosts.
 
 # Usage
