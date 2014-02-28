@@ -1,6 +1,10 @@
 all:
 	@go build .
 	@go get -d ./...
+
+depends:
+	@go get -d ./...
+
 build:
 	@go build .
 benchmark:
