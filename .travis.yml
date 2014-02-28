@@ -5,4 +5,9 @@ go:
     - 1.1
     - 1.2
 
+install:
+    - go get github.com/dotcloud/docker
+    - go get github.com/goraft/raft
+    - github.com/gorilla/mux
+
 script: make test
