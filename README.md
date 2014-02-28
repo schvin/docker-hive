@@ -1,4 +1,4 @@
-# Docker Hive [![Build Status](https://ejh-drone.arcus.io/github.com/ehazlett/docker-hive/status.png?branch=master)](https://ejh-drone.arcus.io/github.com/ehazlett/docker-hive)
+# Docker Hive [![Build Status](https://drone.io/github.com/ehazlett/docker-hive/status.png)](https://drone.io/github.com/ehazlett/docker-hive/latest)
 This is experimental cluster support for Docker.  It uses Raft for communication between Docker hosts.
 
 # Usage
