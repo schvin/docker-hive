@@ -1,0 +1,10 @@
+image: ehazlett/drone-go1.2
+env:
+  - GOPATH=/var/cache/drone
+script:
+  - make depends
+  - make test
+notify:
+  email:
+    recipients:
+      - ejhazlett@gmail.com
