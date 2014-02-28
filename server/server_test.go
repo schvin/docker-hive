@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -108,4 +109,32 @@ func TestHandleCreateReturnsWithStatusCreated(t *testing.T) {
 	if response.Code != http.StatusCreated {
 		t.Fatalf("Non-expected status code%d:\n\tbody: %v", http.StatusCreated, response.Code)
 	}
+}
+
+func TestNewContainer(t *testing.T) {
+	cId := newTestContainer()
+	testServer := newTestServer()
+	info := testServer.getContainer(cId)
+	if info.Container.Id != cId {
+		t.Fatalf("Invalid ID: expected %s ; received %s", cId, info.Container.Id)
+	}
+
+}
+
+func newTestContainer() string {
+	body := "{ \"Image\": \"base\", \"Cmd\": [\"echo\", \"hello\"] }"
+	b := bytes.NewBufferString(body)
+	request, _ := http.NewRequest("POST", "/v1.9/containers/create", b)
+	request.Header.Add("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	testServer := newTestServer()
+	testServer.containerCreateHandler(response, request)
+	var c APIContainer
+	decoder := json.NewDecoder(response.Body)
+	err := decoder.Decode(&c)
+	if err != nil {
+		panic("Unable to parse JSON from newTestContainer")
+	}
+	return c.Id
 }

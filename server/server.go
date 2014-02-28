@@ -143,6 +143,7 @@ func (s *Server) getContainer(id string) ContainerInfo {
 			log.Printf("Error decoding container JSON: %s", err)
 		}
 		for _, v := range containers {
+			log.Println(v.Id)
 			if v.Id == id {
 				containerInfo = ContainerInfo{Container: v, Host: s.GetConnectionString(host)}
 				found = true
@@ -693,7 +694,9 @@ func handlerError(msg string, status int, w http.ResponseWriter) {
 
 func (s *Server) dockerHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
-	path := fmt.Sprintf("/%s", strings.Replace(vars["path"], "docker", "", 1))
+	req.ParseForm()
+	params := req.Form
+	path := fmt.Sprintf("/%s?%s", strings.Replace(vars["path"], "docker", "", 1), params.Encode())
 	log.Printf("Received Docker request: %s", path)
 	c, err := s.newDockerClient()
 	defer c.Close()

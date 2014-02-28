@@ -23,7 +23,7 @@ func containersResponse(s *Server, w http.ResponseWriter, all string) {
 		contents, err := ioutil.ReadAll(resp.Body)
 		resp.Body.Close()
 		value = string(contents)
-		// filter out not running
+		// filter out not running if requested
 		if all == "" && value != "" {
 			var containers []APIContainer
 			s := bytes.NewBufferString(value)
@@ -36,12 +36,12 @@ func containersResponse(s *Server, w http.ResponseWriter, all string) {
 					allContainers = append(allContainers, v)
 				}
 			}
+			b, err := json.Marshal(allContainers)
+			if err != nil {
+				log.Printf("Error marshaling containers to JSON: %s", err)
+			}
+			value = string(b)
 		}
-		b, err := json.Marshal(allContainers)
-		if err != nil {
-			log.Printf("Error marshaling containers to JSON: %s", err)
-		}
-		value = string(b)
 	}
 	w.Write([]byte(value))
 }
