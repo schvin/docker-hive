@@ -6,7 +6,7 @@ go:
 
 before_install:
     - sudo apt-get update -qq
-    - sudo apt-get install -qq btrfs-tools libdevmapper-dev
+    - sudo apt-get install -qq --no-install-recommends btrfs-tools libdevmapper-dev build-essential aufs-tools
 
 install:
     - go get github.com/dotcloud/docker
