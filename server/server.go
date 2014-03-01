@@ -86,7 +86,7 @@ type (
 	}
 
 	ContainerInfo struct {
-		Container APIContainer
+		Container Container
 		Host      string
 	}
 )
@@ -134,15 +134,15 @@ func (s *Server) newDockerClient() (*httputil.ClientConn, error) {
 	return httputil.NewClientConn(conn, nil), nil
 }
 
-// Finds a container among the cluster.
-func (s *Server) getContainer(id string) ContainerInfo {
+// Gets all containers among the cluster with the specified id.
+func (s *Server) getContainerInfo(id string) []ContainerInfo {
 	found := false
-	containerInfo := ContainerInfo{}
+	var containers []ContainerInfo
 	for _, host := range s.AllNodeConnectionStrings() {
 		if found {
 			break
 		}
-		path := fmt.Sprintf("%s/docker/containers/json?all=1", host)
+		path := fmt.Sprintf("%s/docker/containers/%s/json", host, id)
 		resp, err := http.Get(path)
 		if err != nil {
 			log.Printf("Error getting host containers for %s: %s", host, err)
@@ -151,22 +151,19 @@ func (s *Server) getContainer(id string) ContainerInfo {
 		contents, err := ioutil.ReadAll(resp.Body)
 		resp.Body.Close()
 		// filter out not running
-		var containers []APIContainer
+		var container Container
 		c := bytes.NewBufferString(string(contents))
 		d := json.NewDecoder(c)
-		if err := d.Decode(&containers); err != nil {
+		if err := d.Decode(&container); err != nil {
 			log.Printf("Error decoding container JSON: %s", err)
 		}
-		for _, v := range containers {
-			log.Println(v.Id)
-			if v.Id == id {
-				containerInfo = ContainerInfo{Container: v, Host: s.GetConnectionString(host)}
-				found = true
-				break
-			}
+		log.Println(container.Id)
+		if container.Id == id {
+			containerInfo := ContainerInfo{Container: container, Host: s.GetConnectionString(host)}
+			containers = append(containers, containerInfo)
 		}
 	}
-	return containerInfo
+	return containers
 
 }
 

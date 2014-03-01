@@ -134,11 +134,26 @@ func TestHandleCreateReturnsWithStatusCreated(t *testing.T) {
 func TestNewContainer(t *testing.T) {
 	cId := newTestContainer()
 	testServer := newTestServer()
-	info := testServer.getContainer(cId)
-	if info.Container.Id != cId {
-		t.Fatalf("Invalid ID: expected %s ; received %s", cId, info.Container.Id)
+	info := testServer.getContainerInfo(cId)
+	for _, c := range info {
+		if c.Container.Id != cId {
+			t.Fatalf("Invalid ID: expected %s ; received %s", cId, c.Container.Id)
+		}
 	}
+}
 
+func TestGetContainer(t *testing.T) {
+	cId := newTestContainer()
+	testServer := newTestServer()
+	info := testServer.getContainerInfo(cId)
+	for _, c := range info {
+		if c.Container.Id != cId {
+			t.Fatalf("Invalid ID: expected %s ; received %s", cId, c.Container.Id)
+		}
+		if c.Container.Config.CpuShares != 0 {
+			t.Fatalf("Expected 0 Container.Config.CpuShares; received %d", c.Container.Config.CpuShares)
+		}
+	}
 }
 
 func newTestContainer() string {
