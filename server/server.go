@@ -33,7 +33,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dotcloud/docker"
 	"github.com/ehazlett/docker-hive/db"
 	"github.com/goraft/raft"
 	"github.com/gorilla/mux"
@@ -54,7 +53,7 @@ type (
 		VirtualSize int
 	}
 
-	Port struct {
+	InfoPort struct {
 		IP          string
 		PrivatePort int
 		PublicPort  int
@@ -67,7 +66,7 @@ type (
 		Image   string
 		Status  string
 		Command string
-		Ports   []Port
+		Ports   []InfoPort
 		Names   []string
 	}
 
@@ -90,6 +89,7 @@ type (
 		Container APIContainer
 		Host      string
 	}
+
 )
 
 // Utility function for copying HTTP Headers.
@@ -204,7 +204,7 @@ func (s *Server) getContainers() []APIContainer {
 }
 
 // Utility function for inspecting a local Docker container.
-func (s *Server) inspectContainer(id string) *docker.Container {
+func (s *Server) inspectContainer(id string) *Container {
 	path := fmt.Sprintf("/containers/%s/json?all=1", id)
 	c, err := s.newDockerClient()
 	defer c.Close()
@@ -220,7 +220,7 @@ func (s *Server) inspectContainer(id string) *docker.Container {
 		log.Fatalf("Error inspecting container from Docker: %s", err)
 	}
 
-	var container *docker.Container
+	var container *Container
 	if resp.StatusCode == http.StatusOK {
 		d := json.NewDecoder(resp.Body)
 		if err = d.Decode(&container); err != nil {
