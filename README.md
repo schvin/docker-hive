@@ -1,4 +1,4 @@
-# Docker Hive [![Build Status](https://drone.io/github.com/ehazlett/docker-hive/status.png)](https://drone.io/github.com/ehazlett/docker-hive/latest)
+# Docker Hive 
 This is experimental cluster support for Docker.  It uses Raft for communication between Docker hosts.
 
 # Usage
@@ -18,4 +18,4 @@ Now you will be able to use the standard Docker client with any of the nodes in 
 * `docker -H tcp://10.1.1.20:4500 ps`
 
 # Status
-Very early development.  Not for production.
+Very early development.  Not yet for production.
