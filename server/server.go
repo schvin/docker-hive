@@ -89,7 +89,6 @@ type (
 		Container APIContainer
 		Host      string
 	}
-
 )
 
 // Utility function for copying HTTP Headers.

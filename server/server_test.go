@@ -22,6 +22,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 )
 
@@ -32,7 +33,11 @@ var (
 )
 
 func newTestServer() *Server {
-	testServer := New(tmpDir, "", listenPort, "/var/run/docker.sock", "")
+	dockerPath := os.Getenv("DOCKER_PATH")
+	if dockerPath == "" {
+		dockerPath = "/var/run/docker.sock"
+	}
+	testServer := New(tmpDir, "", listenPort, dockerPath, "")
 	testServer.Start()
 	return testServer
 }
