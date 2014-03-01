@@ -2,7 +2,7 @@ all:
 	@go build .
 	@go get -d ./...
 
-depends:
+deps:
 	@go get -d ./...
 
 build:
