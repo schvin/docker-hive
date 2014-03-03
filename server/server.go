@@ -415,6 +415,7 @@ func (s *Server) Start() (*sync.WaitGroup, error) {
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/json", s.imagesHandler).Methods("GET", "POST")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/create", s.imageCreateHandler).Methods("POST")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/{imageName:.*}/history", s.imageHistoryHandler).Methods("GET")
+	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/{imageName:.*}/search", s.imageSearchHandler).Methods("GET")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/{imageName:.*}", s.imageDeleteHandler).Methods("DELETE")
 	s.Router.HandleFunc("/", s.indexHandler).Methods("GET")
 
@@ -587,6 +588,11 @@ func (s *Server) imageCreateHandler(w http.ResponseWriter, req *http.Request) {
 
 // Docker: image history
 func (s *Server) imageHistoryHandler(w http.ResponseWriter, req *http.Request) {
+	s.proxyDockerRequest(w, req)
+}
+
+// Docker: image search
+func (s *Server) imageSearchHandler(w http.ResponseWriter, req *http.Request) {
 	s.proxyDockerRequest(w, req)
 }
 
