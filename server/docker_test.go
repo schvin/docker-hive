@@ -303,3 +303,16 @@ func TestHandleImageTagReturnsWithStatusOK(t *testing.T) {
 		t.Fatalf("Non-expected status code %v: expected %v\nbody: %v", response.Code, "200", response.Body)
 	}
 }
+
+func TestHandleDockerVersionReturnsWithStatusOK(t *testing.T) {
+	testServer := newTestServer()
+	response := httptest.NewRecorder()
+
+	request, _ := http.NewRequest("GET", getTestUrl("/version"), nil)
+
+	testServer.dockerVersionHandler(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("Non-expected status code %v: expected %v\nbody: %v", response.Code, "200", response.Body)
+	}
+}
