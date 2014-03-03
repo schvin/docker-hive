@@ -413,6 +413,7 @@ func (s *Server) Start() (*sync.WaitGroup, error) {
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/kill", s.containerKillHandler).Methods("POST")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/json", s.imagesHandler).Methods("GET", "POST")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/create", s.imageCreateHandler).Methods("POST")
+	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/{imageName:.*}", s.imageDeleteHandler).Methods("DELETE")
 	s.Router.HandleFunc("/", s.indexHandler).Methods("GET")
 
 	log.Printf("Server name: %s\n", s.RaftServer.Name())
@@ -561,19 +562,28 @@ func (s *Server) writeHandler(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
+// Docker: list containers
 func (s *Server) containersHandler(w http.ResponseWriter, req *http.Request) {
 	all := req.FormValue("all")
 	containersResponse(s, w, all)
 }
 
+// Docker: list images
 func (s *Server) imagesHandler(w http.ResponseWriter, req *http.Request) {
 	imagesResponse(s, w)
 }
 
+// Docker: pull image
 func (s *Server) imageCreateHandler(w http.ResponseWriter, req *http.Request) {
 	s.proxyDockerRequest(w, req)
 }
 
+// Docker: delete image
+func (s *Server) imageDeleteHandler(w http.ResponseWriter, req *http.Request) {
+	s.proxyDockerRequest(w, req)
+}
+
+// Proxies HTTP requests
 func (s *Server) proxyRequest(w http.ResponseWriter, req *http.Request, urlString string) {
 	client := &http.Client{}
 	if urlString == "" {
@@ -643,20 +653,15 @@ func (s *Server) proxyLocalDockerRequest(w http.ResponseWriter, req *http.Reques
 
 // Proxies requests to Docker specifically for Docker for all Nodes.
 func (s *Server) proxyDockerRequest(w http.ResponseWriter, req *http.Request) {
-	// Read the value from the POST body.
-	//_, err := ioutil.ReadAll(req.Body)
-	//if err != nil {
-	//	w.WriteHeader(http.StatusBadRequest)
-	//	return
-	//}
-
 	for _, host := range s.AllNodeConnectionStrings() {
+		req.ParseForm()
 		params := req.Form
 		urlString := fmt.Sprintf("%s/docker%s?%s", host, req.URL.Path, params.Encode())
 		s.proxyRequest(w, req, urlString)
 	}
 }
 
+// Docker: run
 func (s *Server) containerCreateHandler(w http.ResponseWriter, req *http.Request) {
 	// route request to designated node if present ; otherwise use self
 	params := req.Form
@@ -671,39 +676,53 @@ func (s *Server) containerCreateHandler(w http.ResponseWriter, req *http.Request
 	s.proxyRequest(w, req, urlString)
 }
 
+// Docker: inspect
+func (s *Server) containerInspectHandler(w http.ResponseWriter, req *http.Request) {
+	s.proxyDockerRequest(w, req)
+}
+
+// Docker: restart
 func (s *Server) containerRestartHandler(w http.ResponseWriter, req *http.Request) {
 	s.proxyDockerRequest(w, req)
 }
 
+// Docker: start
 func (s *Server) containerStartHandler(w http.ResponseWriter, req *http.Request) {
 	s.proxyDockerRequest(w, req)
 }
 
+// Docker: stop
 func (s *Server) containerStopHandler(w http.ResponseWriter, req *http.Request) {
 	s.proxyDockerRequest(w, req)
 }
 
+// Docker: rm
 func (s *Server) containerRemoveHandler(w http.ResponseWriter, req *http.Request) {
 	s.proxyDockerRequest(w, req)
 }
 
+// Docker: top
 func (s *Server) containerTopHandler(w http.ResponseWriter, req *http.Request) {
 	s.proxyDockerRequest(w, req)
 }
 
+// Docker: diff
 func (s *Server) containerChangesHandler(w http.ResponseWriter, req *http.Request) {
 	s.proxyDockerRequest(w, req)
 }
 
+// Docker: kill
 func (s *Server) containerKillHandler(w http.ResponseWriter, req *http.Request) {
 	s.proxyDockerRequest(w, req)
 }
 
+// Generic error handler.
 func handlerError(msg string, status int, w http.ResponseWriter) {
 	w.WriteHeader(status)
 	w.Write([]byte(msg))
 }
 
+// Proxies requests to the local Docker daemon
 func (s *Server) dockerHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	req.ParseForm()
@@ -743,8 +762,4 @@ func (s *Server) dockerHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	w.WriteHeader(resp.StatusCode)
 	w.Write([]byte(contents))
-}
-
-func (s *Server) containerInspectHandler(w http.ResponseWriter, req *http.Request) {
-	s.proxyDockerRequest(w, req)
 }

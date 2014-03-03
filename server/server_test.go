@@ -46,6 +46,48 @@ func getTestUrl(path string) string {
 	return fmt.Sprintf("%s%s", testAddress, path)
 }
 
+func newTestContainer(cmd string) string {
+	if cmd == "" {
+		cmd = "true"
+	}
+	body := fmt.Sprintf("{ \"Image\": \"base\", \"Cmd\": [\"%s\"] }", cmd)
+	b := bytes.NewBufferString(body)
+	request, _ := http.NewRequest("POST", "/v1.9/containers/create", b)
+	request.Header.Add("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	testServer := newTestServer()
+	testServer.containerCreateHandler(response, request)
+	var c APIContainer
+	decoder := json.NewDecoder(response.Body)
+	err := decoder.Decode(&c)
+	if err != nil {
+		panic("Unable to parse JSON from newTestContainer")
+	}
+	return c.Id
+}
+
+func newTestRunningContainer(cmd string) string {
+	if cmd == "" {
+		cmd = "true"
+	}
+	body := fmt.Sprintf("{ \"Image\": \"base\", \"Cmd\": [\"%s\"], \"Tty\": true, \"OpenStdin\": true, \"StdinOnce\": false }", cmd)
+	b := bytes.NewBufferString(body)
+	request, _ := http.NewRequest("POST", "/v1.9/containers/create", b)
+	request.Header.Add("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	testServer := newTestServer()
+	testServer.containerCreateHandler(response, request)
+	var c APIContainer
+	decoder := json.NewDecoder(response.Body)
+	err := decoder.Decode(&c)
+	if err != nil {
+		panic("Unable to parse JSON from newTestContainer")
+	}
+	return c.Id
+}
+
 func TestGetAllNodeConnectionStrings(t *testing.T) {
 	testServer := newTestServer()
 	c := testServer.AllNodeConnectionStrings()
@@ -62,7 +104,7 @@ func TestHandleIndexReturnsWithStatusOK(t *testing.T) {
 	testServer.indexHandler(response, request)
 
 	if response.Code != http.StatusOK {
-		t.Fatalf("Non-expected status code%v:\n\tbody: %v", "200", response.Code)
+		t.Fatalf("Non-expected status code %v: expected %v\nbody: %v", response.Code, "200", response.Body)
 	}
 }
 
@@ -74,7 +116,7 @@ func TestHandleDBGetReturnsWithStatusOK(t *testing.T) {
 	testServer.indexHandler(response, request)
 
 	if response.Code != http.StatusOK {
-		t.Fatalf("Non-expected status code%v:\n\tbody: %v", "200", response.Code)
+		t.Fatalf("Non-expected status code %v: expected %v\nbody: %v", response.Code, "200", response.Body)
 	}
 }
 
@@ -88,88 +130,6 @@ func TestHandleDBPostReturnsWithStatusOK(t *testing.T) {
 	testServer.indexHandler(response, request)
 
 	if response.Code != http.StatusOK {
-		t.Fatalf("Non-expected status code%v:\n\tbody: %v", "200", response.Code)
+		t.Fatalf("Non-expected status code %v: expected %v\nbody: %v", response.Code, "200", response.Body)
 	}
-}
-
-func TestHandleImagesReturnsWithStatusOK(t *testing.T) {
-	request, _ := http.NewRequest("GET", getTestUrl("/images/json"), nil)
-	response := httptest.NewRecorder()
-
-	testServer := newTestServer()
-	testServer.containersHandler(response, request)
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("Non-expected status code%v:\n\tbody: %v", "200", response.Code)
-	}
-}
-
-func TestHandleContainersReturnsWithStatusOK(t *testing.T) {
-	request, _ := http.NewRequest("GET", getTestUrl("/containers/json"), nil)
-	response := httptest.NewRecorder()
-
-	testServer := newTestServer()
-	testServer.containersHandler(response, request)
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("Non-expected status code%v:\n\tbody: %v", "200", response.Code)
-	}
-}
-
-func TestHandleCreateReturnsWithStatusCreated(t *testing.T) {
-	body := "{ \"Image\": \"base\", \"Cmd\": [\"echo\", \"hello\"] }"
-	b := bytes.NewBufferString(body)
-	request, _ := http.NewRequest("POST", "/v1.9/containers/create", b)
-	request.Header.Add("Content-Type", "application/json")
-	response := httptest.NewRecorder()
-
-	testServer := newTestServer()
-	testServer.containerCreateHandler(response, request)
-
-	if response.Code != http.StatusCreated {
-		t.Fatalf("Non-expected status code%d:\n\tbody: %v", http.StatusCreated, response.Code)
-	}
-}
-
-func TestNewContainer(t *testing.T) {
-	cId := newTestContainer()
-	testServer := newTestServer()
-	info := testServer.getContainerInfo(cId)
-	for _, c := range info {
-		if c.Container.Id != cId {
-			t.Fatalf("Invalid ID: expected %s ; received %s", cId, c.Container.Id)
-		}
-	}
-}
-
-func TestGetContainer(t *testing.T) {
-	cId := newTestContainer()
-	testServer := newTestServer()
-	info := testServer.getContainerInfo(cId)
-	for _, c := range info {
-		if c.Container.Id != cId {
-			t.Fatalf("Invalid ID: expected %s ; received %s", cId, c.Container.Id)
-		}
-		if c.Container.Config.CpuShares != 0 {
-			t.Fatalf("Expected 0 Container.Config.CpuShares; received %d", c.Container.Config.CpuShares)
-		}
-	}
-}
-
-func newTestContainer() string {
-	body := "{ \"Image\": \"base\", \"Cmd\": [\"echo\", \"hello\"] }"
-	b := bytes.NewBufferString(body)
-	request, _ := http.NewRequest("POST", "/v1.9/containers/create", b)
-	request.Header.Add("Content-Type", "application/json")
-	response := httptest.NewRecorder()
-
-	testServer := newTestServer()
-	testServer.containerCreateHandler(response, request)
-	var c APIContainer
-	decoder := json.NewDecoder(response.Body)
-	err := decoder.Decode(&c)
-	if err != nil {
-		panic("Unable to parse JSON from newTestContainer")
-	}
-	return c.Id
 }
