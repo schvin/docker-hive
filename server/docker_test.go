@@ -329,3 +329,17 @@ func TestHandleDockerInfoReturnsWithStatusOK(t *testing.T) {
 		t.Fatalf("Non-expected status code %v: expected %v\nbody: %v", response.Code, "200", response.Body)
 	}
 }
+
+func TestHandleContainerExportReturnsWithStatusOK(t *testing.T) {
+	cId := newTestContainer("")
+	testServer := newTestServer()
+	response := httptest.NewRecorder()
+
+	request, _ := http.NewRequest("GET", getTestUrl(fmt.Sprintf("/containers/%s/export", cId)), nil)
+
+	testServer.containerExportHandler(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("Non-expected status code %v: expected %v\nbody: %v", response.Code, "200", response.Body)
+	}
+}

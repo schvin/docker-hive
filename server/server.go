@@ -414,6 +414,7 @@ func (s *Server) Start() (*sync.WaitGroup, error) {
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/top", s.containerTopHandler).Methods("GET")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/changes", s.containerChangesHandler).Methods("GET")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/kill", s.containerKillHandler).Methods("POST")
+	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/export", s.containerExportHandler).Methods("GET")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/json", s.imagesHandler).Methods("GET", "POST")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/create", s.imageCreateHandler).Methods("POST")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/{imageName:.*}/history", s.imageHistoryHandler).Methods("GET")
@@ -576,12 +577,14 @@ func (s *Server) dockerAuthHandler(w http.ResponseWriter, req *http.Request) {
 // Docker: version
 func (s *Server) dockerVersionHandler(w http.ResponseWriter, req *http.Request) {
 	// TODO: need to find a way to return multiple versions for each cluster node
+	// for now will use local node
 	s.proxyLocalDockerRequest(w, req)
 }
 
 // Docker: info
 func (s *Server) dockerInfoHandler(w http.ResponseWriter, req *http.Request) {
 	// TODO: need to find a way to return multiple versions for each cluster node
+	// for now will use local node
 	s.proxyLocalDockerRequest(w, req)
 }
 
@@ -752,6 +755,13 @@ func (s *Server) containerChangesHandler(w http.ResponseWriter, req *http.Reques
 // Docker: kill
 func (s *Server) containerKillHandler(w http.ResponseWriter, req *http.Request) {
 	s.proxyDockerRequest(w, req)
+}
+
+// Docker: kill
+func (s *Server) containerExportHandler(w http.ResponseWriter, req *http.Request) {
+	// TODO: need to find a way to return multiple versions for each cluster node
+	// for now will use local node
+	s.proxyLocalDockerRequest(w, req)
 }
 
 // Generic error handler.
