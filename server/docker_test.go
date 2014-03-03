@@ -17,7 +17,9 @@ package server
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -263,6 +265,39 @@ func TestHandleImageSearchReturnsWithStatusOK(t *testing.T) {
 	request, _ := http.NewRequest("GET", getTestUrl("/images/search?term=busybox"), nil)
 
 	testServer.imageSearchHandler(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("Non-expected status code %v: expected %v\nbody: %v", response.Code, "200", response.Body)
+	}
+}
+
+func TestHandleImageTagReturnsWithStatusOK(t *testing.T) {
+	testServer := newTestServer()
+	response := httptest.NewRecorder()
+	h := sha1.New()
+	io.WriteString(h, "docker-hive test image name")
+	imgName := h.Sum(nil)
+
+	// pull image
+	request, _ := http.NewRequest("POST", getTestUrl("/images/create?fromImage=busybox&tag="), nil)
+	testServer.imageCreateHandler(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("Non-expected status code %v: expected %v\nbody: %v", response.Code, "200", response.Body)
+	}
+
+	// tag
+	request, _ = http.NewRequest("POST", getTestUrl(fmt.Sprintf("/images/busybox/tag?repo=%s&tag=", imgName)), nil)
+	testServer.imageHistoryHandler(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("Non-expected status code %v: expected %v\nbody: %v", response.Code, "200", response.Body)
+	}
+
+	// remove tag
+	request, _ = http.NewRequest("DELETE", getTestUrl(fmt.Sprintf("/images/%s", imgName)), nil)
+
+	testServer.imageCreateHandler(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("Non-expected status code %v: expected %v\nbody: %v", response.Code, "200", response.Body)
