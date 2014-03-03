@@ -236,3 +236,22 @@ func TestHandleContainerInspectReturnsWithStatusOK(t *testing.T) {
 		t.Fatalf("Non-expected status code %v: expected %v\nbody: %v", response.Code, "200", response.Body)
 	}
 }
+
+func TestHandleImageHistoryReturnsWithStatusOK(t *testing.T) {
+	testServer := newTestServer()
+	response := httptest.NewRecorder()
+
+	request, _ := http.NewRequest("POST", getTestUrl("/images/create?fromImage=busybox&tag="), nil)
+	testServer.imageCreateHandler(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("Non-expected status code %v: expected %v\nbody: %v", response.Code, "200", response.Body)
+	}
+
+	request, _ = http.NewRequest("GET", getTestUrl("/images/busybox/json"), nil)
+	testServer.imageHistoryHandler(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("Non-expected status code %v: expected %v\nbody: %v", response.Code, "200", response.Body)
+	}
+}
