@@ -18,12 +18,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/ehazlett/docker-hive/server"
-	"github.com/goraft/raft"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"os"
 	"time"
+
+	"github.com/ehazlett/docker-hive/server"
+	"github.com/goraft/raft"
 )
 
 const VERSION string = "0.0.2"
@@ -49,7 +51,7 @@ func init() {
 	flag.IntVar(&port, "p", 4500, "Port")
 	flag.StringVar(&join, "join", "", "host:port of leader to join")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [arguments] <data-path> \n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [arguments] [data-path] \n", os.Args[0])
 		flag.PrintDefaults()
 	}
 }
@@ -80,16 +82,22 @@ func main() {
 	raft.RegisterCommand(&server.ActionCommand{})
 	raft.RegisterCommand(&server.SyncCommand{})
 
+	var path string
 	// Set the data directory.
 	if flag.NArg() == 0 {
-		flag.Usage()
-		log.Fatal("Data path argument required")
+		// create temp dir
+		p, err := ioutil.TempDir(os.TempDir(), "hive_")
+		if err != nil {
+			log.Fatalf("Unable to create data path: %v", err)
+		}
+		path = p
+	} else {
+		path = flag.Arg(0)
+		if err := os.MkdirAll(path, 0744); err != nil {
+			log.Fatalf("Unable to create data path: %v", err)
+		}
 	}
-	path := flag.Arg(0)
-	if err := os.MkdirAll(path, 0744); err != nil {
-		log.Fatalf("Unable to create path: %v", err)
-	}
-
+	log.Println(path)
 	log.SetFlags(log.LstdFlags)
 	log.Printf("Docker Hive %s\n", VERSION)
 	s := server.New(path, host, port, dockerPath, join)
