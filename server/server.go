@@ -403,6 +403,7 @@ func (s *Server) Start() (*sync.WaitGroup, error) {
 	s.Router.HandleFunc("/docker/{path:.*}", s.dockerHandler).Methods("GET", "POST", "DELETE").Name("docker")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/auth", s.dockerAuthHandler).Methods("POST")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/version", s.dockerVersionHandler).Methods("GET")
+	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/info", s.dockerInfoHandler).Methods("GET")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/json", s.containersHandler).Methods("GET")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/create", s.containerCreateHandler).Methods("POST")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/containers/{containerId:.*}/json", s.containerInspectHandler).Methods("GET")
@@ -575,7 +576,13 @@ func (s *Server) dockerAuthHandler(w http.ResponseWriter, req *http.Request) {
 // Docker: version
 func (s *Server) dockerVersionHandler(w http.ResponseWriter, req *http.Request) {
 	// TODO: need to find a way to return multiple versions for each cluster node
-	s.proxyDockerRequest(w, req)
+	s.proxyLocalDockerRequest(w, req)
+}
+
+// Docker: info
+func (s *Server) dockerInfoHandler(w http.ResponseWriter, req *http.Request) {
+	// TODO: need to find a way to return multiple versions for each cluster node
+	s.proxyLocalDockerRequest(w, req)
 }
 
 // Docker: list containers
