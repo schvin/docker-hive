@@ -198,6 +198,28 @@ func TestGetContainer(t *testing.T) {
 	}
 }
 
+func TestGetImage(t *testing.T) {
+	testServer := newTestServer()
+	response := httptest.NewRecorder()
+
+	// make sure we have busybox to test
+	request, _ := http.NewRequest("POST", getTestUrl("/images/create?fromImage=busybox&tag="), nil)
+	testServer.imageCreateHandler(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("Non-expected status code %v: expected %v\nbody: %v", response.Code, "200", response.Body)
+	}
+
+	// get info for busybox
+	info := testServer.getImageInfo("busybox")
+	for _, i := range info {
+		tag := i.Image.Name
+		if tag != "busybox" {
+			t.Fatalf("Invalid image: expected busybox ; received %s", tag)
+		}
+	}
+}
+
 func TestHandleContainerDiffReturnsWithStatusOK(t *testing.T) {
 	cId := newTestContainer("")
 	testServer := newTestServer()

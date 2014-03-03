@@ -26,6 +26,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -47,7 +48,7 @@ type (
 
 	Image struct {
 		Id          string
-		Created     int
+		Created     int64
 		RepoTags    []string
 		Size        int
 		VirtualSize int
@@ -65,7 +66,7 @@ type (
 		Created int
 		Image   string
 		Status  string
-		Command string
+		Command string `json:"string"`
 		Ports   []InfoPort
 		Names   []string
 	}
@@ -86,8 +87,23 @@ type (
 	}
 
 	ContainerInfo struct {
-		Container Container
-		Host      string
+		Container  Container
+		ServerName string
+	}
+
+	ImageDetail struct {
+		Id            string
+		Name          string
+		Created       time.Time
+		DockerVersion string `json:"docker_version"`
+		Size          int64
+		Architecture  string
+		Author        string
+	}
+
+	ImageInfo struct {
+		Image      ImageDetail
+		ServerName string
 	}
 )
 
@@ -138,14 +154,19 @@ func (s *Server) newDockerClient() (*httputil.ClientConn, error) {
 func (s *Server) getContainerInfo(id string) []ContainerInfo {
 	found := false
 	var containers []ContainerInfo
-	for _, host := range s.AllNodeConnectionStrings() {
+	for _, serverName := range s.AllNodes() {
 		if found {
 			break
 		}
+		host := s.GetConnectionString(serverName)
 		path := fmt.Sprintf("%s/docker/containers/%s/json", host, id)
 		resp, err := http.Get(path)
 		if err != nil {
 			log.Printf("Error getting host containers for %s: %s", host, err)
+			continue
+		}
+		// if container doesn't exist on host, skip
+		if resp.StatusCode == 404 {
 			continue
 		}
 		contents, err := ioutil.ReadAll(resp.Body)
@@ -156,15 +177,54 @@ func (s *Server) getContainerInfo(id string) []ContainerInfo {
 		d := json.NewDecoder(c)
 		if err := d.Decode(&container); err != nil {
 			log.Printf("Error decoding container JSON: %s", err)
+			continue
 		}
-		log.Println(container.Id)
-		if container.Id == id {
-			containerInfo := ContainerInfo{Container: container, Host: s.GetConnectionString(host)}
+		// search for the container id (in case "short form" is sent
+		if strings.IndexAny(container.Id, id) != -1 {
+			containerInfo := ContainerInfo{Container: container, ServerName: serverName}
 			containers = append(containers, containerInfo)
 		}
 	}
 	return containers
+}
 
+// Gets all images among the cluster with the specified id.
+func (s *Server) getImageInfo(id string) []ImageInfo {
+	found := false
+	var images []ImageInfo
+	for _, serverName := range s.AllNodes() {
+		if found {
+			break
+		}
+		host := s.GetConnectionString(serverName)
+		path := fmt.Sprintf("%s/docker/images/%s/json", host, id)
+		resp, err := http.Get(path)
+		if err != nil {
+			log.Printf("Error getting host images for %s: %s", host, err)
+			continue
+		}
+		// if container doesn't exist on host, skip
+		if resp.StatusCode == 404 {
+			continue
+		}
+		contents, err := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+		// filter out not running
+		var img ImageDetail
+		i := bytes.NewBufferString(string(contents))
+		d := json.NewDecoder(i)
+		if err := d.Decode(&img); err != nil {
+			log.Printf("Error decoding image JSON: %s", err)
+			continue
+		}
+		img.Name = id
+		// search for the container id (in case "short form" is sent
+		if strings.IndexAny(img.Id, id) != -1 {
+			imageInfo := ImageInfo{Image: img, ServerName: serverName}
+			images = append(images, imageInfo)
+		}
+	}
+	return images
 }
 
 // Utility function for getting all local Docker containers.
@@ -571,7 +631,7 @@ func (s *Server) writeHandler(w http.ResponseWriter, req *http.Request) {
 
 // Docker: login
 func (s *Server) dockerAuthHandler(w http.ResponseWriter, req *http.Request) {
-	s.proxyDockerRequest(w, req)
+	s.proxyLocalDockerRequest(w, req)
 }
 
 // Docker: version
@@ -694,11 +754,46 @@ func (s *Server) proxyLocalDockerRequest(w http.ResponseWriter, req *http.Reques
 
 // Proxies requests to Docker specifically for Docker for all Nodes.
 func (s *Server) proxyDockerRequest(w http.ResponseWriter, req *http.Request) {
-	for _, host := range s.AllNodeConnectionStrings() {
-		req.ParseForm()
-		params := req.Form
+	vars := mux.Vars(req)
+	servers := s.AllNodes()
+	containerRequest := false
+	imageRequest := false
+	for k, _ := range vars {
+		if k == "containerId" {
+			containerRequest = true
+		}
+
+		if k == "imageId" {
+			imageRequest = true
+		}
+	}
+	// check if a container request and build server list with only those
+	// that have the container present
+	if containerRequest {
+		servers = []string{}
+		for _, c := range s.getContainerInfo(vars["containerId"]) {
+			servers = append(servers, c.ServerName)
+		}
+	}
+	// check if an image request and build server list with only those
+	// that have the image present
+	if imageRequest {
+		servers = []string{}
+		for _, c := range s.getImageInfo(vars["imageId"]) {
+			servers = append(servers, c.ServerName)
+		}
+	}
+	req.ParseForm()
+	params := req.Form
+	for _, srv := range servers {
+		host := s.GetConnectionString(srv)
 		urlString := fmt.Sprintf("%s/docker%s?%s", host, req.URL.Path, params.Encode())
 		s.proxyRequest(w, req, urlString)
+		// TODO: for now we must break because the Docker CLI
+		// cannot handle multiple responses however we
+		// want the scaffolding in here for when we get the hive cli
+		// and/or Docker CLI integration
+		break
 	}
 }
 
@@ -757,11 +852,20 @@ func (s *Server) containerKillHandler(w http.ResponseWriter, req *http.Request) 
 	s.proxyDockerRequest(w, req)
 }
 
-// Docker: kill
+// Docker: export
 func (s *Server) containerExportHandler(w http.ResponseWriter, req *http.Request) {
 	// TODO: need to find a way to return multiple versions for each cluster node
-	// for now will use local node
-	s.proxyLocalDockerRequest(w, req)
+	// for now will use first node on which the container is found
+	vars := mux.Vars(req)
+	for _, c := range s.getContainerInfo(vars["containerId"]) {
+		tUrl, _ := url.Parse(s.GetConnectionString(c.ServerName))
+		path := fmt.Sprintf("/docker%s", req.URL.Path)
+		req.URL.Host = tUrl.Host
+		req.URL.Scheme = tUrl.Scheme
+		req.URL.Path = path
+		s.proxyRequest(w, req, req.URL.String())
+		break
+	}
 }
 
 // Generic error handler.
