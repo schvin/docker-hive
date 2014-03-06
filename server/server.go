@@ -66,7 +66,7 @@ type (
 		Created int
 		Image   string
 		Status  string
-		Command string `json:"string"`
+		Command string
 		Ports   []InfoPort
 		Names   []string
 	}
