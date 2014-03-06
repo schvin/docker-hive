@@ -35,8 +35,8 @@ import (
 	"time"
 
 	"github.com/ehazlett/docker-hive/db"
-	"github.com/goraft/raft"
-	"github.com/gorilla/mux"
+	"github.com/ehazlett/docker-hive/third_party/github.com/goraft/raft"
+	"github.com/ehazlett/docker-hive/third_party/github.com/gorilla/mux"
 )
 
 type (

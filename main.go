@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/ehazlett/docker-hive/server"
-	"github.com/goraft/raft"
+	"github.com/ehazlett/docker-hive/third_party/github.com/goraft/raft"
 )
 
 const VERSION string = "0.0.2"
