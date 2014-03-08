@@ -72,18 +72,19 @@ type (
 	}
 
 	Server struct {
-		name       string
-		Host       string
-		Port       int
-		path       string
-		httpServer *http.Server
-		db         *db.DB
-		mutex      sync.RWMutex
-		waiter     *sync.WaitGroup
-		Router     *mux.Router
-		RaftServer raft.Server
-		DockerPath string
-		LeaderURL  string
+		name        string
+		Host        string
+		Port        int
+		path        string
+		httpServer  *http.Server
+		db          *db.DB
+		mutex       sync.RWMutex
+		waiter      *sync.WaitGroup
+		Router      *mux.Router
+		RaftServer  raft.Server
+		DockerPath  string
+		LeaderURL   string
+		peerTimeout int
 	}
 
 	ContainerInfo struct {
@@ -117,16 +118,17 @@ func copyHeaders(dst, src http.Header) {
 }
 
 // Creates a new server.
-func New(path string, host string, port int, dockerPath string, leader string) *Server {
+func New(path string, host string, port int, dockerPath string, leader string, peerTimeout int) *Server {
 	s := &Server{
-		Host:       host,
-		Port:       port,
-		path:       path,
-		db:         db.New(),
-		waiter:     new(sync.WaitGroup),
-		Router:     mux.NewRouter(),
-		DockerPath: dockerPath,
-		LeaderURL:  leader,
+		path:        path,
+		Host:        host,
+		Port:        port,
+		DockerPath:  dockerPath,
+		LeaderURL:   leader,
+		peerTimeout: peerTimeout,
+		db:          db.New(),
+		waiter:      new(sync.WaitGroup),
+		Router:      mux.NewRouter(),
 	}
 
 	// Read existing name or generate a new one.
@@ -342,7 +344,6 @@ func (s *Server) GetConnectionString(node string) string {
 	}
 	// check peers
 	for _, p := range s.RaftServer.Peers() {
-		log.Printf("Peer: %s", p.ConnectionString)
 		if p.Name == node {
 			return p.ConnectionString
 		}
@@ -353,6 +354,16 @@ func (s *Server) GetConnectionString(node string) string {
 // This returns if this is the leader.
 func (s *Server) IsLeader() bool {
 	return s.RaftServer.State() == raft.Leader
+}
+
+func (s *Server) RemovePeer(name string) error {
+	// Remove peer in raft
+	err := s.RaftServer.RemovePeer(name)
+	if err != nil {
+		log.Printf("Unable to remove peer: %s (%v)", name, err)
+		return err
+	}
+	return nil
 }
 
 // This returns the current members.
@@ -481,9 +492,11 @@ func (s *Server) Start() (*sync.WaitGroup, error) {
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/{imageName:.*}/search", s.imageSearchHandler).Methods("GET")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/{imageName:.*}/tag", s.imageSearchHandler).Methods("POST")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/images/{imageName:.*}", s.imageDeleteHandler).Methods("DELETE")
+	s.Router.PathPrefix("/").Handler(http.FileServer(http.Dir("./ui/"))).Methods("GET", "POST")
 	s.Router.HandleFunc("/", s.indexHandler).Methods("GET")
 
 	log.Printf("Server name: %s\n", s.RaftServer.Name())
+	log.Printf("Peer Timeout: %ds", s.peerTimeout)
 	log.Println("Listening at:", s.ConnectionString())
 
 	go s.listenAndServe()
@@ -495,6 +508,25 @@ func (s *Server) Start() (*sync.WaitGroup, error) {
 func (s *Server) Stop() {
 	log.Println("Stopping server")
 	s.waiter.Done()
+}
+
+func (s *Server) removeStalePeers() {
+	if s.IsLeader() {
+		for _, p := range s.RaftServer.Peers() {
+			// ignore join events
+			creationTime := time.Date(0001, time.January, 01, 0, 0, 0, 0, time.UTC)
+			if p.LastActivity().Equal(creationTime) {
+				continue
+			}
+			// if over the heartbeat interval, remove
+			timeout, _ := time.ParseDuration(fmt.Sprintf("%ds", s.peerTimeout))
+			drift := time.Now().Sub(p.LastActivity())
+			if drift.Seconds() > timeout.Seconds() {
+				log.Printf("Peer %s timeout; removing", p.Name)
+				s.RemovePeer(p.Name)
+			}
+		}
+	}
 }
 
 func (s *Server) listenAndServe() {
@@ -513,6 +545,8 @@ run:
 	for {
 		select {
 		case <-tick:
+			// check heartbeats of servers and remove if stale
+			s.removeStalePeers()
 		case <-sig:
 			break run
 		}
@@ -552,13 +586,16 @@ func (s *Server) joinHandler(w http.ResponseWriter, req *http.Request) {
 	command := &raft.DefaultJoinCommand{}
 
 	if err := json.NewDecoder(req.Body).Decode(&command); err != nil {
+		log.Printf("Error joining: %s", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	if _, err := s.RaftServer.Do(command); err != nil {
+		log.Printf("Error joining: %s", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	log.Printf("%s joined", req.RemoteAddr)
 }
 
 func (s *Server) Sync() error {

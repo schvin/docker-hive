@@ -31,14 +31,15 @@ import (
 const VERSION string = "0.0.2"
 
 var (
-	dockerPath string
-	version    bool
-	port       int
-	verbose    bool
-	trace      bool
-	debug      bool
-	host       string
-	join       string
+	dockerPath  string
+	version     bool
+	port        int
+	verbose     bool
+	trace       bool
+	debug       bool
+	host        string
+	join        string
+	peerTimeout int
 )
 
 func init() {
@@ -50,6 +51,7 @@ func init() {
 	flag.StringVar(&host, "n", "", "Node hostname")
 	flag.IntVar(&port, "p", 4500, "Port")
 	flag.StringVar(&join, "join", "", "host:port of leader to join")
+	flag.IntVar(&peerTimeout, "t", 5, "Peer timeout")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [arguments] [data-path] \n", os.Args[0])
 		flag.PrintDefaults()
@@ -100,7 +102,7 @@ func main() {
 	log.Println(path)
 	log.SetFlags(log.LstdFlags)
 	log.Printf("Docker Hive %s\n", VERSION)
-	s := server.New(path, host, port, dockerPath, join)
+	s := server.New(path, host, port, dockerPath, join, peerTimeout)
 
 	waiter, err := s.Start()
 	if err != nil {
