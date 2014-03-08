@@ -37,7 +37,7 @@ func newTestServer() *Server {
 	if dockerPath == "" {
 		dockerPath = "/var/run/docker.sock"
 	}
-	testServer := New(tmpDir, "", listenPort, dockerPath, "")
+	testServer := New(tmpDir, "", listenPort, dockerPath, "", 1)
 	testServer.Start()
 	return testServer
 }
