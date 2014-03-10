@@ -28,7 +28,7 @@ import (
 	"github.com/ehazlett/docker-hive/third_party/github.com/goraft/raft"
 )
 
-const VERSION string = "0.0.2"
+const VERSION string = "0.1.0"
 
 var (
 	dockerPath  string
@@ -102,7 +102,7 @@ func main() {
 	log.Println(path)
 	log.SetFlags(log.LstdFlags)
 	log.Printf("Docker Hive %s\n", VERSION)
-	s := server.New(path, host, port, dockerPath, join, peerTimeout)
+	s := server.New(path, host, port, dockerPath, join, peerTimeout, VERSION)
 
 	waiter, err := s.Start()
 	if err != nil {

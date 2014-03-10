@@ -8,7 +8,7 @@ deps:
 build:
 	@go build .
 benchmark:
-	@go test -bench=. ./...
+	@go test ./db -bench=.
 test:
 	@go test ./db
 	@go test ./server

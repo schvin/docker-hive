@@ -85,6 +85,17 @@ type (
 		DockerPath  string
 		LeaderURL   string
 		peerTimeout int
+		Version     string
+	}
+
+	ServerInfo struct {
+		Name             string   `json:"name"`
+		Port             int      `json:"port"`
+		ConnectionString string   `json:"connectionString"`
+		Version          string   `json:"version"`
+		DockerPath       string   `json:"dockerPath"`
+		IsLeader         bool     `json:"isLeader"`
+		Peers            []string `json:"peers"`
 	}
 
 	ContainerInfo struct {
@@ -118,7 +129,7 @@ func copyHeaders(dst, src http.Header) {
 }
 
 // Creates a new server.
-func New(path string, host string, port int, dockerPath string, leader string, peerTimeout int) *Server {
+func New(path string, host string, port int, dockerPath string, leader string, peerTimeout int, version string) *Server {
 	s := &Server{
 		path:        path,
 		Host:        host,
@@ -129,6 +140,7 @@ func New(path string, host string, port int, dockerPath string, leader string, p
 		db:          db.New(),
 		waiter:      new(sync.WaitGroup),
 		Router:      mux.NewRouter(),
+		Version:     version,
 	}
 
 	// Read existing name or generate a new one.
@@ -471,6 +483,7 @@ func (s *Server) Start() (*sync.WaitGroup, error) {
 	s.Router.HandleFunc("/db/{key}", s.writeHandler).Methods("POST")
 	s.Router.HandleFunc("/join", s.joinHandler).Methods("POST")
 	s.Router.HandleFunc("/sync", s.syncHandler).Methods("GET").Name("sync")
+	s.Router.HandleFunc("/info", s.infoHandler).Methods("GET").Name("info")
 	s.Router.HandleFunc("/docker/{path:.*}", s.dockerHandler).Methods("GET", "POST", "DELETE").Name("docker")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/auth", s.dockerAuthHandler).Methods("POST")
 	s.Router.HandleFunc("/{apiVersion:v1.[7-9]}/version", s.dockerVersionHandler).Methods("GET")
@@ -664,6 +677,17 @@ func (s *Server) writeHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
+}
+
+// Cluster Info
+func (s *Server) infoHandler(w http.ResponseWriter, req *http.Request) {
+	srv := ServerInfo{Name: s.name, Port: s.Port, ConnectionString: s.GetConnectionString(s.name), Version: s.Version, DockerPath: s.DockerPath, IsLeader: s.IsLeader(), Peers: s.Members()}
+	b, err := json.Marshal(srv)
+	if err != nil {
+		log.Printf("Error marshaling server info to JSON: %s", err)
+	}
+	value := string(b)
+	w.Write([]byte(value))
 }
 
 // Docker: login
