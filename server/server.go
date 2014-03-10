@@ -95,6 +95,7 @@ type (
 		Version          string   `json:"version"`
 		DockerPath       string   `json:"dockerPath"`
 		IsLeader         bool     `json:"isLeader"`
+		Leader           string   `json:"leader"`
 		Peers            []string `json:"peers"`
 	}
 
@@ -681,7 +682,16 @@ func (s *Server) writeHandler(w http.ResponseWriter, req *http.Request) {
 
 // Cluster Info
 func (s *Server) infoHandler(w http.ResponseWriter, req *http.Request) {
-	srv := ServerInfo{Name: s.name, Port: s.Port, ConnectionString: s.GetConnectionString(s.name), Version: s.Version, DockerPath: s.DockerPath, IsLeader: s.IsLeader(), Peers: s.Members()}
+	srv := ServerInfo{
+		Name:             s.name,
+		Port:             s.Port,
+		ConnectionString: s.GetConnectionString(s.name),
+		Version:          s.Version,
+		DockerPath:       s.DockerPath,
+		IsLeader:         s.IsLeader(),
+		Leader:           s.GetConnectionString(s.Leader()),
+		Peers:            s.Members(),
+	}
 	b, err := json.Marshal(srv)
 	if err != nil {
 		log.Printf("Error marshaling server info to JSON: %s", err)
