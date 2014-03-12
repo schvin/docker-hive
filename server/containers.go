@@ -29,6 +29,7 @@ func containersResponse(s *Server, w http.ResponseWriter, all string) {
 	value := "{}"
 	var allContainers []APIContainer
 	for _, host := range s.AllNodeConnectionStrings() {
+		log.Printf("Checking peer: %s", host)
 		path := fmt.Sprintf("%s/docker/containers/json?all=1", host)
 		resp, err := http.Get(path)
 		if err != nil {
