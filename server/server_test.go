@@ -52,7 +52,7 @@ func newTestContainer(cmd string) string {
 	}
 	body := fmt.Sprintf("{ \"Image\": \"base\", \"Cmd\": [\"%s\"] }", cmd)
 	b := bytes.NewBufferString(body)
-	request, _ := http.NewRequest("POST", "/v1.9/containers/create", b)
+	request, _ := http.NewRequest("POST", "/v1.10/containers/create", b)
 	request.Header.Add("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 
@@ -73,7 +73,7 @@ func newTestRunningContainer(cmd string) string {
 	}
 	body := fmt.Sprintf("{ \"Image\": \"base\", \"Cmd\": [\"%s\"], \"Tty\": true, \"OpenStdin\": true, \"StdinOnce\": false }", cmd)
 	b := bytes.NewBufferString(body)
-	request, _ := http.NewRequest("POST", "/v1.9/containers/create", b)
+	request, _ := http.NewRequest("POST", "/v1.10/containers/create", b)
 	request.Header.Add("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 
