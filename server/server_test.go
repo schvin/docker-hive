@@ -48,7 +48,7 @@ func getTestUrl(path string) string {
 
 func newTestContainer(cmd string) string {
 	if cmd == "" {
-		cmd = "true"
+		cmd = "echo newTestContainer"
 	}
 	body := fmt.Sprintf("{ \"Image\": \"base\", \"Cmd\": [\"%s\"] }", cmd)
 	b := bytes.NewBufferString(body)
@@ -69,7 +69,7 @@ func newTestContainer(cmd string) string {
 
 func newTestRunningContainer(cmd string) string {
 	if cmd == "" {
-		cmd = "true"
+		cmd = "echo testRunningContainer"
 	}
 	body := fmt.Sprintf("{ \"Image\": \"base\", \"Cmd\": [\"%s\"], \"Tty\": true, \"OpenStdin\": true, \"StdinOnce\": false }", cmd)
 	b := bytes.NewBufferString(body)
