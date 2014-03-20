@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/ehazlett/docker-hive/server"
-	"github.com/ehazlett/docker-hive/third_party/github.com/goraft/raft"
+	"github.com/goraft/raft"
 )
 
 const VERSION string = "0.1.0"
@@ -56,6 +56,11 @@ func init() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [arguments] [data-path] \n", os.Args[0])
 		flag.PrintDefaults()
 	}
+
+	// Setup Raft commands.
+	raft.RegisterCommand(&server.WriteCommand{})
+	raft.RegisterCommand(&server.ActionCommand{})
+	raft.RegisterCommand(&server.SyncCommand{})
 }
 
 func main() {
@@ -78,11 +83,6 @@ func main() {
 	}
 
 	rand.Seed(time.Now().UnixNano())
-
-	// Setup commands.
-	raft.RegisterCommand(&server.WriteCommand{})
-	raft.RegisterCommand(&server.ActionCommand{})
-	raft.RegisterCommand(&server.SyncCommand{})
 
 	var path string
 	// Set the data directory.

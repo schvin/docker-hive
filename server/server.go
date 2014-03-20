@@ -35,8 +35,8 @@ import (
 	"time"
 
 	"github.com/ehazlett/docker-hive/db"
-	"github.com/ehazlett/docker-hive/third_party/github.com/goraft/raft"
-	"github.com/ehazlett/docker-hive/third_party/github.com/gorilla/mux"
+	"github.com/goraft/raft"
+	"github.com/gorilla/mux"
 )
 
 type (
@@ -118,6 +118,10 @@ type (
 		Image      ImageDetail
 		ServerName string
 	}
+
+        ServerContext struct {
+            Server *Server
+        }
 )
 
 // Utility function for copying HTTP Headers.
@@ -437,7 +441,8 @@ func (s *Server) Start() (*sync.WaitGroup, error) {
 
 	// Initialize and start Raft server.
 	transporter := raft.NewHTTPTransporter("/raft")
-	s.RaftServer, err = raft.NewServer(s.name, s.path, transporter, nil, s.db, "")
+        ctx := ServerContext{Server: s}
+        s.RaftServer, err = raft.NewServer(s.name, s.path, transporter, nil, ctx, "")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -506,7 +511,6 @@ func (s *Server) Start() (*sync.WaitGroup, error) {
 	s.Router.HandleFunc("/{apiVersion:v1.*}/images/{imageName:.*}/search", s.imageSearchHandler).Methods("GET")
 	s.Router.HandleFunc("/{apiVersion:v1.*}/images/{imageName:.*}/tag", s.imageSearchHandler).Methods("POST")
 	s.Router.HandleFunc("/{apiVersion:v1.*}/images/{imageName:.*}", s.imageDeleteHandler).Methods("DELETE")
-	s.Router.PathPrefix("/").Handler(http.FileServer(http.Dir("./ui/"))).Methods("GET", "POST")
 	s.Router.HandleFunc("/", s.indexHandler).Methods("GET")
 
 	log.Printf("Server name: %s\n", s.RaftServer.Name())
@@ -870,14 +874,15 @@ func (s *Server) proxyDockerRequest(w http.ResponseWriter, req *http.Request) {
 
 // Docker: run
 func (s *Server) containerCreateHandler(w http.ResponseWriter, req *http.Request) {
-	// route request to designated node if present ; otherwise use self
-	params := req.Form
-	n := req.FormValue("node")
-	host := s.GetConnectionString(n)
-	if n == "" {
-		n = s.RaftServer.Name()
-		host = s.ConnectionString()
-	}
+        target := req.FormValue("target")
+        n := ""
+        host := ""
+        // default to random node
+        if target == "" {
+            n = s.randomNode()
+            host = s.GetConnectionString(n)
+        }
+        log.Printf("Using host %s for container", host)
 	log.Printf("Launching container on %s", n)
 	urlString := fmt.Sprintf("%s/docker%s?%s", host, req.URL.Path, params.Encode())
 	s.proxyRequest(w, req, urlString)

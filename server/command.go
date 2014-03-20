@@ -17,7 +17,6 @@ package server
 
 import (
 	"fmt"
-	"github.com/ehazlett/docker-hive/db"
 	"github.com/goraft/raft"
 	"log"
 	"net/http"
@@ -47,7 +46,8 @@ func (c *WriteCommand) CommandName() string { return "db:write" }
 
 // writes a value to a key
 func (c *WriteCommand) Apply(server raft.Server) (interface{}, error) {
-	db := server.Context().(*db.DB)
+	ctx := server.Context().(ServerContext)
+        db := ctx.Server.db
 	db.Put(c.Key, c.Value)
 	return nil, nil
 }
