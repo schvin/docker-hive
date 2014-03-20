@@ -874,6 +874,7 @@ func (s *Server) proxyDockerRequest(w http.ResponseWriter, req *http.Request) {
 
 // Docker: run
 func (s *Server) containerCreateHandler(w http.ResponseWriter, req *http.Request) {
+        params := req.Form
         target := req.FormValue("target")
         n := ""
         host := ""
