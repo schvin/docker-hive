@@ -16,17 +16,17 @@
 package server
 
 import (
-    "math/rand"
-    "log"
+	"log"
+	"math/rand"
 )
 
 // randomPolicy returns a random node from the cluster
 func (s *Server) randomNode() string {
-    nodes := s.AllNodes()
-    numNodes := len(nodes)
-    r := rand.Intn(numNodes)
-    node := nodes[r]
-    log.Printf("Using Random Policy. Node: %s", node)
-    return node
+	nodes := s.AllNodes()
+	numNodes := len(nodes)
+	r := rand.Intn(numNodes)
+	node := nodes[r]
+	log.Printf("Using Random Policy. Node: %s", node)
+	return node
 
 }

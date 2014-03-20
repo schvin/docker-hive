@@ -47,7 +47,7 @@ func (c *WriteCommand) CommandName() string { return "db:write" }
 // writes a value to a key
 func (c *WriteCommand) Apply(server raft.Server) (interface{}, error) {
 	ctx := server.Context().(ServerContext)
-        db := ctx.Server.db
+	db := ctx.Server.db
 	db.Put(c.Key, c.Value)
 	return nil, nil
 }

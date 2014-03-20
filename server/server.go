@@ -119,9 +119,9 @@ type (
 		ServerName string
 	}
 
-        ServerContext struct {
-            Server *Server
-        }
+	ServerContext struct {
+		Server *Server
+	}
 )
 
 // Utility function for copying HTTP Headers.
@@ -441,8 +441,8 @@ func (s *Server) Start() (*sync.WaitGroup, error) {
 
 	// Initialize and start Raft server.
 	transporter := raft.NewHTTPTransporter("/raft")
-        ctx := ServerContext{Server: s}
-        s.RaftServer, err = raft.NewServer(s.name, s.path, transporter, nil, ctx, "")
+	ctx := ServerContext{Server: s}
+	s.RaftServer, err = raft.NewServer(s.name, s.path, transporter, nil, ctx, "")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -874,16 +874,16 @@ func (s *Server) proxyDockerRequest(w http.ResponseWriter, req *http.Request) {
 
 // Docker: run
 func (s *Server) containerCreateHandler(w http.ResponseWriter, req *http.Request) {
-        params := req.Form
-        target := req.FormValue("target")
-        n := ""
-        host := ""
-        // default to random node
-        if target == "" {
-            n = s.randomNode()
-            host = s.GetConnectionString(n)
-        }
-        log.Printf("Using host %s for container", host)
+	params := req.Form
+	target := req.FormValue("target")
+	n := ""
+	host := ""
+	// default to random node
+	if target == "" {
+		n = s.randomNode()
+		host = s.GetConnectionString(n)
+	}
+	log.Printf("Using host %s for container", host)
 	log.Printf("Launching container on %s", n)
 	urlString := fmt.Sprintf("%s/docker%s?%s", host, req.URL.Path, params.Encode())
 	s.proxyRequest(w, req, urlString)
