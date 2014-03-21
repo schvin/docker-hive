@@ -360,7 +360,7 @@ func (s *Server) GetConnectionString(node string) string {
 		if s.LeaderURL == "" {
 			return s.ConnectionString()
 		} else {
-			return fmt.Sprintf("http://%s", s.LeaderURL)
+			return s.LeaderURL
 		}
 	}
 	// check peers
@@ -454,8 +454,24 @@ func (s *Server) Start() (*sync.WaitGroup, error) {
 	s.RaftServer.Start()
 	leader := s.LeaderURL
 	if leader != "" {
-		// Join to leader if specified.
-		log.Println("Attempting to join leader:", leader)
+		// query "leader" to find "real" leader (in case a new election has occurred
+		path := fmt.Sprintf("http://%s/info", leader)
+		resp, err := http.Get(path)
+		contents, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatalf("Error connecting to leader: %s", err)
+		}
+		resp.Body.Close()
+		c := bytes.NewBufferString(string(contents))
+		d := json.NewDecoder(c)
+		info := ServerInfo{}
+		if err := d.Decode(&info); err != nil {
+			log.Fatalf("Error decoding server info JSON: %s", err)
+		}
+		leader = info.Leader
+		s.LeaderURL = leader
+		// Join to leader
+		log.Println("Joining leader:", leader)
 
 		if !s.RaftServer.IsLogEmpty() {
 			log.Fatal("Cannot join with an existing log")
@@ -600,7 +616,7 @@ func (s *Server) Join(leader string) error {
 
 	var b bytes.Buffer
 	json.NewEncoder(&b).Encode(command)
-	resp, err := http.Post(fmt.Sprintf("http://%s/join", leader), "application/json", &b)
+	resp, err := http.Post(fmt.Sprintf("%s/join", leader), "application/json", &b)
 	if err != nil {
 		return err
 	}
