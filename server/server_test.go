@@ -108,6 +108,30 @@ func TestHandleIndexReturnsWithStatusOK(t *testing.T) {
 	}
 }
 
+func TestHandleInfoReturnsWithStatusOK(t *testing.T) {
+	request, _ := http.NewRequest("GET", getTestUrl("/info"), nil)
+	response := httptest.NewRecorder()
+
+	testServer := newTestServer()
+	testServer.indexHandler(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("Non-expected status code %v: expected %v\nbody: %v", response.Code, "200", response.Body)
+	}
+}
+
+func TestHandlePingReturnsWithStatusOK(t *testing.T) {
+	request, _ := http.NewRequest("GET", getTestUrl("/ping"), nil)
+	response := httptest.NewRecorder()
+
+	testServer := newTestServer()
+	testServer.indexHandler(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("Non-expected status code %v: expected %v\nbody: %v", response.Code, "200", response.Body)
+	}
+}
+
 func TestHandleDBGetReturnsWithStatusOK(t *testing.T) {
 	request, _ := http.NewRequest("GET", getTestUrl("/db/foo"), nil)
 	response := httptest.NewRecorder()

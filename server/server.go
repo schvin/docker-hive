@@ -124,6 +124,8 @@ type (
 	}
 )
 
+var peerTimeout int
+
 // Utility function for copying HTTP Headers.
 func copyHeaders(dst, src http.Header) {
 	for k, vv := range src {
@@ -147,6 +149,8 @@ func New(path string, host string, port int, dockerPath string, leader string, p
 		Router:      mux.NewRouter(),
 		Version:     version,
 	}
+
+	peerTimeout = peerTimeout
 
 	// Read existing name or generate a new one.
 	if b, err := ioutil.ReadFile(filepath.Join(path, "name")); err == nil {
@@ -490,6 +494,7 @@ func (s *Server) Start() (*sync.WaitGroup, error) {
 	s.Router.HandleFunc("/join", s.joinHandler).Methods("POST")
 	s.Router.HandleFunc("/sync", s.syncHandler).Methods("GET").Name("sync")
 	s.Router.HandleFunc("/info", s.infoHandler).Methods("GET").Name("info")
+	s.Router.HandleFunc("/ping", s.pingHandler).Methods("GET").Name("ping")
 	s.Router.HandleFunc("/docker/{path:.*}", s.dockerHandler).Methods("GET", "POST", "DELETE").Name("docker")
 	s.Router.HandleFunc("/{apiVersion:v1.*}/auth", s.dockerAuthHandler).Methods("POST")
 	s.Router.HandleFunc("/{apiVersion:v1.*}/version", s.dockerVersionHandler).Methods("GET")
@@ -528,19 +533,23 @@ func (s *Server) Stop() {
 	s.waiter.Done()
 }
 
+func dialTimeout(network, addr string) (net.Conn, error) {
+	d := time.Duration(peerTimeout) * time.Second
+	return net.DialTimeout(network, addr, d)
+}
+
 func (s *Server) removeStalePeers() {
 	if s.IsLeader() {
+		transport := http.Transport{
+			Dial: dialTimeout,
+		}
+		client := http.Client{
+			Transport: &transport,
+		}
 		for _, p := range s.RaftServer.Peers() {
-			// ignore join events
-			creationTime := time.Date(0001, time.January, 01, 0, 0, 0, 0, time.UTC)
-			if p.LastActivity().Equal(creationTime) {
-				continue
-			}
-			// if over the heartbeat interval, remove
-			timeout, _ := time.ParseDuration(fmt.Sprintf("%ds", s.peerTimeout))
-			drift := time.Now().Sub(p.LastActivity())
-			if drift.Seconds() > timeout.Seconds() {
-				log.Printf("Peer %s timeout; removing", p.Name)
+			_, err := client.Get(s.GetConnectionString(p.Name))
+			if err != nil {
+				log.Printf("Peer timeout ; removing: %s", p.Name)
 				s.RemovePeer(p.Name)
 			}
 		}
@@ -579,7 +588,7 @@ func (s *Server) HandleFunc(pattern string, handler func(http.ResponseWriter, *h
 
 // Index handler
 func (s *Server) indexHandler(w http.ResponseWriter, req *http.Request) {
-	w.Write([]byte("Docker Hive"))
+	w.Write([]byte(fmt.Sprintf("Docker Hive %s", s.Version)))
 }
 
 // Joins to the leader of an existing cluster.
@@ -702,6 +711,12 @@ func (s *Server) infoHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	value := string(b)
 	w.Write([]byte(value))
+}
+
+// heartbeat
+func (s *Server) pingHandler(w http.ResponseWriter, req *http.Request) {
+	w.WriteHeader(200)
+	w.Write([]byte("pong"))
 }
 
 // Docker: login

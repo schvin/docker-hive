@@ -9,6 +9,7 @@ build:
 	@go build .
 benchmark:
 	@go test ./db -bench=.
+	@go test ./server -bench=.
 test:
 	@go test ./db
 	@go test ./server
