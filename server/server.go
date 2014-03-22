@@ -69,6 +69,7 @@ type (
 		Command string
 		Ports   []InfoPort
 		Names   []string
+		Node    string
 	}
 
 	Server struct {
@@ -86,6 +87,7 @@ type (
 		LeaderURL   string
 		peerTimeout int
 		Version     string
+		Zone        string
 	}
 
 	ServerInfo struct {
@@ -97,6 +99,7 @@ type (
 		IsLeader         bool     `json:"isLeader"`
 		Leader           string   `json:"leader"`
 		Peers            []string `json:"peers"`
+		Zone             string   `json:"zone"`
 	}
 
 	ContainerInfo struct {
@@ -136,7 +139,7 @@ func copyHeaders(dst, src http.Header) {
 }
 
 // Creates a new server.
-func New(path string, host string, port int, dockerPath string, leader string, peerTimeout int, version string) *Server {
+func New(path string, host string, port int, dockerPath string, leader string, peerTimeout int, version string, zone string) *Server {
 	s := &Server{
 		path:        path,
 		Host:        host,
@@ -148,6 +151,7 @@ func New(path string, host string, port int, dockerPath string, leader string, p
 		waiter:      new(sync.WaitGroup),
 		Router:      mux.NewRouter(),
 		Version:     version,
+		Zone:        zone,
 	}
 
 	peerTimeout = peerTimeout
@@ -534,7 +538,7 @@ func (s *Server) Start() (*sync.WaitGroup, error) {
 	s.Router.HandleFunc("/{apiVersion:v1.*}/images/{imageName:.*}", s.imageDeleteHandler).Methods("DELETE")
 	s.Router.HandleFunc("/", s.indexHandler).Methods("GET")
 
-	log.Printf("Server name: %s\n", s.RaftServer.Name())
+	log.Printf("Server name: %s Zone: %s\n", s.RaftServer.Name(), s.Zone)
 	log.Printf("Peer Timeout: %ds", s.peerTimeout)
 	log.Println("Listening at:", s.ConnectionString())
 
@@ -582,12 +586,12 @@ func (s *Server) run() {
 	sig := make(chan os.Signal)
 	signal.Notify(sig, os.Interrupt)
 
-	tick := time.Tick(1 * time.Second)
+	heartbeatTick := time.Tick(5 * time.Second)
 
 run:
 	for {
 		select {
-		case <-tick:
+		case <-heartbeatTick:
 			// check heartbeats of servers and remove if stale
 			s.removeStalePeers()
 		case <-sig:
@@ -720,6 +724,7 @@ func (s *Server) infoHandler(w http.ResponseWriter, req *http.Request) {
 		IsLeader:         s.IsLeader(),
 		Leader:           s.GetConnectionString(s.Leader()),
 		Peers:            s.Members(),
+		Zone:             s.Zone,
 	}
 	b, err := json.Marshal(srv)
 	if err != nil {

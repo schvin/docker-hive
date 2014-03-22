@@ -28,7 +28,8 @@ import (
 func containersResponse(s *Server, w http.ResponseWriter, all string) {
 	value := "{}"
 	var allContainers []APIContainer
-	for _, host := range s.AllNodeConnectionStrings() {
+	for _, m := range s.AllNodes() {
+		host := s.GetConnectionString(m)
 		log.Printf("Checking peer: %s", host)
 		path := fmt.Sprintf("%s/docker/containers/json?all=1", host)
 		resp, err := http.Get(path)
@@ -39,8 +40,7 @@ func containersResponse(s *Server, w http.ResponseWriter, all string) {
 		contents, err := ioutil.ReadAll(resp.Body)
 		resp.Body.Close()
 		value = string(contents)
-		// filter out not running if requested
-		if all == "" && value != "" {
+		if value != "" {
 			var containers []APIContainer
 			s := bytes.NewBufferString(value)
 			d := json.NewDecoder(s)
@@ -48,7 +48,13 @@ func containersResponse(s *Server, w http.ResponseWriter, all string) {
 				log.Printf("Error decoding container JSON: %s", err)
 			}
 			for _, v := range containers {
-				if strings.Index(v.Status, "Up") != -1 {
+				v.Node = m
+				// filter only running by default
+				if all == "" {
+					if strings.Index(v.Status, "Up") != -1 {
+						allContainers = append(allContainers, v)
+					}
+				} else {
 					allContainers = append(allContainers, v)
 				}
 			}

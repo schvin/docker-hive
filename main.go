@@ -40,6 +40,7 @@ var (
 	host        string
 	join        string
 	peerTimeout int
+	zone        string
 )
 
 func init() {
@@ -52,6 +53,7 @@ func init() {
 	flag.IntVar(&port, "p", 4500, "Port")
 	flag.StringVar(&join, "join", "", "host:port of leader to join")
 	flag.IntVar(&peerTimeout, "t", 5, "Peer timeout")
+	flag.StringVar(&zone, "zone", "default", "Zone for node")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [arguments] [data-path] \n", os.Args[0])
 		flag.PrintDefaults()
@@ -102,7 +104,7 @@ func main() {
 	log.Println(path)
 	log.SetFlags(log.LstdFlags)
 	log.Printf("Docker Hive %s\n", VERSION)
-	s := server.New(path, host, port, dockerPath, join, peerTimeout, VERSION)
+	s := server.New(path, host, port, dockerPath, join, peerTimeout, VERSION, zone)
 
 	waiter, err := s.Start()
 	if err != nil {

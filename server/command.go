@@ -75,7 +75,7 @@ func (c *ActionCommand) Apply(server raft.Server) (interface{}, error) {
 	return nil, nil
 }
 
-// -- sync command
+// sync command
 type SyncCommand struct {
 	Nodes []string `json:"nodes"`
 }
