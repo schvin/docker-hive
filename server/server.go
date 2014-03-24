@@ -559,19 +559,17 @@ func dialTimeout(network, addr string) (net.Conn, error) {
 }
 
 func (s *Server) removeStalePeers() {
-	if s.IsLeader() {
-		transport := http.Transport{
-			Dial: dialTimeout,
-		}
-		client := http.Client{
-			Transport: &transport,
-		}
-		for _, p := range s.RaftServer.Peers() {
-			_, err := client.Get(s.GetConnectionString(p.Name))
-			if err != nil {
-				log.Printf("Peer timeout ; removing: %s", p.Name)
-				s.RemovePeer(p.Name)
-			}
+	transport := http.Transport{
+		Dial: dialTimeout,
+	}
+	client := http.Client{
+		Transport: &transport,
+	}
+	for _, p := range s.RaftServer.Peers() {
+		_, err := client.Get(s.GetConnectionString(p.Name))
+		if err != nil {
+			log.Printf("Peer timeout ; removing: %s", p.Name)
+			s.RemovePeer(p.Name)
 		}
 	}
 }
